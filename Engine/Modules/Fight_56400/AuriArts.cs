@@ -1,0 +1,85 @@
+using System.Collections.Generic;
+using YapYapDraw.Engine.Element;
+using YapYapDraw.Engine.Helper;
+using YapYapDraw.Engine.Managers;
+using YapYapDraw.Engine.ModuleSetup;
+using YapYapDraw.Engine.Struct;
+using YapYapDraw.Engine.Util;
+
+namespace YapYapDraw.Modules.Fight_56400;
+
+public class AuriArts : ISpecialAction
+{
+    private int tether154;
+
+    public override string Name => "Auri Arts";
+
+    public override HashSet<uint> ActionID => new HashSet<uint> { 24495u, 24568u };
+
+    public override void OnActionCast(ActorCastInfo info)
+    {
+        base.CanDraw = true;
+    }
+
+    public override void OnActorTetherEvent(uint actorId, uint Id, ulong targetId)
+    {
+        if (base.CanDraw)
+        {
+            if (Id == 157)
+            {
+                DrawManager.Draw(new DrawElement
+                {
+                    drawAvfx = "general02xf",
+                    radiusX = 5f,
+                    drawOnObject = true,
+                    target = targetId.GameObject(),
+                    endToTarget = true,
+                    hitCounter = new HitCounter
+                    {
+                        ActionID = new HashSet<uint> { 24922u }
+                    }
+                }, actorId.GameObject());
+            }
+            if (Id == 154)
+            {
+                tether154++;
+                DrawManager.Draw(new DrawElement
+                {
+                    drawAvfx = "general02xf",
+                    radiusX = 5f,
+                    drawOnObject = true,
+                    target = targetId.GameObject(),
+                    endToTarget = true,
+                    hitCounter = new HitCounter
+                    {
+                        ActionID = new HashSet<uint> { 24547u },
+                        TargetHitCount = tether154
+                    }
+                }, actorId.GameObject());
+            }
+            if (Id == 156)
+            {
+                tether154 = 0;
+                base.CanDraw = false;
+                DrawManager.Draw(new DrawElement
+                {
+                    drawAvfx = "general02xf",
+                    radiusX = 5f,
+                    radiusZ = 50f,
+                    drawOnObject = true,
+                    delayDrawTime = 6000f,
+                    hitCounter = new HitCounter
+                    {
+                        ActionID = new HashSet<uint> { 24548u }
+                    }
+                }, targetId.GameObject());
+            }
+        }
+    }
+
+    public override void Reset()
+    {
+        tether154 = 0;
+        base.Reset();
+    }
+}

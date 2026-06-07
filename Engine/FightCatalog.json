@@ -1,0 +1,548 @@
+[
+    {
+        "Key":  "JeunoArc1",
+        "Category":  "Alliance",
+        "Gid":  1015,
+        "Mechs":  27
+    },
+    {
+        "Key":  "SanDoriaArc2",
+        "Category":  "Alliance",
+        "Gid":  1058,
+        "Mechs":  7
+    },
+    {
+        "Key":  "CloudofDarknessModule",
+        "Category":  "Chaotic",
+        "Gid":  1010,
+        "Mechs":  20
+    },
+    {
+        "Key":  "PilgrimsTraverse",
+        "Category":  "DeepDungeon",
+        "Gid":  1063,
+        "Mechs":  4
+    },
+    {
+        "Key":  "Fight_21192",
+        "Category":  "Dungeon",
+        "Gid":  1008,
+        "Mechs":  9
+    },
+    {
+        "Key":  "AlexandriaDt",
+        "Category":  "Dungeon",
+        "Gid":  1027,
+        "Mechs":  10
+    },
+    {
+        "Key":  "TheMesoTerminal",
+        "Category":  "Dungeon",
+        "Gid":  1028,
+        "Mechs":  10
+    },
+    {
+        "Key":  "CastrumMeridianum",
+        "Category":  "Dungeon",
+        "Gid":  15,
+        "Mechs":  3
+    },
+    {
+        "Key":  "Praetorium",
+        "Category":  "Dungeon",
+        "Gid":  16,
+        "Mechs":  1
+    },
+    {
+        "Key":  "StrayboroughEw",
+        "Category":  "Dungeon",
+        "Gid":  783,
+        "Mechs":  4
+    },
+    {
+        "Key":  "LunarSubterrane",
+        "Category":  "Dungeon",
+        "Gid":  823,
+        "Mechs":  0
+    },
+    {
+        "Key":  "WorqorLarDor",
+        "Category":  "Dungeon",
+        "Gid":  824,
+        "Mechs":  3
+    },
+    {
+        "Key":  "Origenics",
+        "Category":  "Dungeon",
+        "Gid":  825,
+        "Mechs":  9
+    },
+    {
+        "Key":  "Ihuykatumu",
+        "Category":  "Dungeon",
+        "Gid":  826,
+        "Mechs":  3
+    },
+    {
+        "Key":  "Alexandria",
+        "Category":  "Dungeon",
+        "Gid":  827,
+        "Mechs":  9
+    },
+    {
+        "Key":  "SkydeepCenote",
+        "Category":  "Dungeon",
+        "Gid":  829,
+        "Mechs":  6
+    },
+    {
+        "Key":  "Vanguard",
+        "Category":  "Dungeon",
+        "Gid":  831,
+        "Mechs":  8
+    },
+    {
+        "Key":  "TenderValley",
+        "Category":  "Dungeon",
+        "Gid":  834,
+        "Mechs":  11
+    },
+    {
+        "Key":  "Fight_56456",
+        "Category":  "Dungeon",
+        "Gid":  981,
+        "Mechs":  8
+    },
+    {
+        "Key":  "QueenEternalEx",
+        "Category":  "Extreme",
+        "Gid":  1017,
+        "Mechs":  7
+    },
+    {
+        "Key":  "Zelenia",
+        "Category":  "Extreme",
+        "Gid":  1031,
+        "Mechs":  4
+    },
+    {
+        "Key":  "LockWyvernEx",
+        "Category":  "Extreme",
+        "Gid":  1044,
+        "Mechs":  14
+    },
+    {
+        "Key":  "SpheneDarkEx",
+        "Category":  "Extreme",
+        "Gid":  1062,
+        "Mechs":  9
+    },
+    {
+        "Key":  "GolbezEx",
+        "Category":  "Extreme",
+        "Gid":  1077,
+        "Mechs":  7
+    },
+    {
+        "Key":  "Valigarmanda",
+        "Category":  "Extreme",
+        "Gid":  833,
+        "Mechs":  19
+    },
+    {
+        "Key":  "BarbaricciaEx",
+        "Category":  "Extreme",
+        "Gid":  871,
+        "Mechs":  5
+    },
+    {
+        "Key":  "Zeromus",
+        "Category":  "Extreme",
+        "Gid":  965,
+        "Mechs":  10
+    },
+    {
+        "Key":  "Everkeep",
+        "Category":  "Extreme",
+        "Gid":  996,
+        "Mechs":  9
+    },
+    {
+        "Key":  "CE110FlameOfDusk",
+        "Category":  "Foray",
+        "Gid":  1018,
+        "Mechs":  3
+    },
+    {
+        "Key":  "CE112EternalWatch",
+        "Category":  "Foray",
+        "Gid":  1018,
+        "Mechs":  0
+    },
+    {
+        "Key":  "TheForkedTower",
+        "Category":  "Foray",
+        "Gid":  1018,
+        "Mechs":  16
+    },
+    {
+        "Key":  "CE107Unbridled",
+        "Category":  "Foray",
+        "Gid":  1018,
+        "Mechs":  4
+    },
+    {
+        "Key":  "CE103WithExtremePrejudice",
+        "Category":  "Foray",
+        "Gid":  1018,
+        "Mechs":  1
+    },
+    {
+        "Key":  "CE105CrawlingDeath",
+        "Category":  "Foray",
+        "Gid":  1018,
+        "Mechs":  3
+    },
+    {
+        "Key":  "CE106TrialByClaw",
+        "Category":  "Foray",
+        "Gid":  1018,
+        "Mechs":  4
+    },
+    {
+        "Key":  "DancingGreen",
+        "Category":  "Raid",
+        "Gid":  1019,
+        "Mechs":  6
+    },
+    {
+        "Key":  "SugarRiot",
+        "Category":  "Raid",
+        "Gid":  1021,
+        "Mechs":  3
+    },
+    {
+        "Key":  "BruteAbombinator",
+        "Category":  "Raid",
+        "Gid":  1023,
+        "Mechs":  4
+    },
+    {
+        "Key":  "M8",
+        "Category":  "Raid",
+        "Gid":  1025,
+        "Mechs":  0
+    },
+    {
+        "Key":  "A4S",
+        "Category":  "Raid",
+        "Gid":  139,
+        "Mechs":  6
+    },
+    {
+        "Key":  "A4",
+        "Category":  "Raid",
+        "Gid":  189,
+        "Mechs":  3
+    },
+    {
+        "Key":  "E2",
+        "Category":  "Raid",
+        "Gid":  719,
+        "Mechs":  4
+    },
+    {
+        "Key":  "E3",
+        "Category":  "Raid",
+        "Gid":  726,
+        "Mechs":  6
+    },
+    {
+        "Key":  "E11",
+        "Category":  "Raid",
+        "Gid":  751,
+        "Mechs":  5
+    },
+    {
+        "Key":  "P4N",
+        "Category":  "Raid",
+        "Gid":  800,
+        "Mechs":  3
+    },
+    {
+        "Key":  "P1N",
+        "Category":  "Raid",
+        "Gid":  872,
+        "Mechs":  2
+    },
+    {
+        "Key":  "P3N",
+        "Category":  "Raid",
+        "Gid":  876,
+        "Mechs":  4
+    },
+    {
+        "Key":  "P1NHaunted",
+        "Category":  "Raid",
+        "Gid":  936,
+        "Mechs":  6
+    },
+    {
+        "Key":  "P4NHaunted",
+        "Category":  "Raid",
+        "Gid":  942,
+        "Mechs":  5
+    },
+    {
+        "Key":  "BlackCat",
+        "Category":  "Raid",
+        "Gid":  985,
+        "Mechs":  6
+    },
+    {
+        "Key":  "HoneyBLovely",
+        "Category":  "Raid",
+        "Gid":  987,
+        "Mechs":  6
+    },
+    {
+        "Key":  "BruteBomber",
+        "Category":  "Raid",
+        "Gid":  989,
+        "Mechs":  7
+    },
+    {
+        "Key":  "WickedThunder",
+        "Category":  "Raid",
+        "Gid":  991,
+        "Mechs":  7
+    },
+    {
+        "Key":  "DancingGreen",
+        "Category":  "Savage",
+        "Gid":  1020,
+        "Mechs":  14
+    },
+    {
+        "Key":  "SugarRiot",
+        "Category":  "Savage",
+        "Gid":  1022,
+        "Mechs":  13
+    },
+    {
+        "Key":  "BruteAbombinator",
+        "Category":  "Savage",
+        "Gid":  1024,
+        "Mechs":  15
+    },
+    {
+        "Key":  "HowlingBlade",
+        "Category":  "Savage",
+        "Gid":  1026,
+        "Mechs":  25
+    },
+    {
+        "Key":  "Lindblum",
+        "Category":  "Savage",
+        "Gid":  1075,
+        "Mechs":  16
+    },
+    {
+        "Key":  "Athena",
+        "Category":  "Savage",
+        "Gid":  943,
+        "Mechs":  23
+    },
+    {
+        "Key":  "BlackCat",
+        "Category":  "Savage",
+        "Gid":  986,
+        "Mechs":  18
+    },
+    {
+        "Key":  "HoneyBLovely",
+        "Category":  "Savage",
+        "Gid":  988,
+        "Mechs":  14
+    },
+    {
+        "Key":  "BruteBomber",
+        "Category":  "Savage",
+        "Gid":  990,
+        "Mechs":  14
+    },
+    {
+        "Key":  "WickedThunder",
+        "Category":  "Savage",
+        "Gid":  992,
+        "Mechs":  32
+    },
+    {
+        "Key":  "CenoteJaJa",
+        "Category":  "TreasureHunt",
+        "Gid":  993,
+        "Mechs":  2
+    },
+    {
+        "Key":  "Fight_92547",
+        "Category":  "Trial",
+        "Gid":  1030,
+        "Mechs":  5
+    },
+    {
+        "Key":  "Fight_33798",
+        "Category":  "Trial",
+        "Gid":  1043,
+        "Mechs":  9
+    },
+    {
+        "Key":  "theGreatHunt",
+        "Category":  "Trial",
+        "Gid":  474,
+        "Mechs":  3
+    },
+    {
+        "Key":  "EmeraldWeapon",
+        "Category":  "Trial",
+        "Gid":  762,
+        "Mechs":  4
+    },
+    {
+        "Key":  "DiamondWeapon",
+        "Category":  "Trial",
+        "Gid":  781,
+        "Mechs":  4
+    },
+    {
+        "Key":  "Fight_5529",
+        "Category":  "Trial",
+        "Gid":  790,
+        "Mechs":  4
+    },
+    {
+        "Key":  "Fight_97403",
+        "Category":  "Trial",
+        "Gid":  802,
+        "Mechs":  0
+    },
+    {
+        "Key":  "Manderville",
+        "Category":  "Trial",
+        "Gid":  81,
+        "Mechs":  6
+    },
+    {
+        "Key":  "UltimaWeapon",
+        "Category":  "Trial",
+        "Gid":  830,
+        "Mechs":  6
+    },
+    {
+        "Key":  "Fight_44428",
+        "Category":  "Trial",
+        "Gid":  832,
+        "Mechs":  7
+    },
+    {
+        "Key":  "Fight_64923",
+        "Category":  "Trial",
+        "Gid":  886,
+        "Mechs":  2
+    },
+    {
+        "Key":  "Fight_82450",
+        "Category":  "Trial",
+        "Gid":  944,
+        "Mechs":  5
+    },
+    {
+        "Key":  "Fight_56879",
+        "Category":  "Trial",
+        "Gid":  949,
+        "Mechs":  8
+    },
+    {
+        "Key":  "Fight_99991",
+        "Category":  "Trial",
+        "Gid":  964,
+        "Mechs":  7
+    },
+    {
+        "Key":  "Fight_33687",
+        "Category":  "Trial",
+        "Gid":  984,
+        "Mechs":  7
+    },
+    {
+        "Key":  "Fight_89740",
+        "Category":  "Trial",
+        "Gid":  995,
+        "Mechs":  6
+    },
+    {
+        "Key":  "FRU",
+        "Category":  "Ultimate",
+        "Gid":  1006,
+        "Mechs":  53
+    },
+    {
+        "Key":  "DancingMad",
+        "Category":  "Ultimate",
+        "Gid":  1094,
+        "Mechs":  9
+    },
+    {
+        "Key":  "UnendingCoil",
+        "Category":  "Ultimate",
+        "Gid":  280,
+        "Mechs":  17
+    },
+    {
+        "Key":  "UWU",
+        "Category":  "Ultimate",
+        "Gid":  539,
+        "Mechs":  29
+    },
+    {
+        "Key":  "TEA",
+        "Category":  "Ultimate",
+        "Gid":  694,
+        "Mechs":  35
+    },
+    {
+        "Key":  "DSR",
+        "Category":  "Ultimate",
+        "Gid":  788,
+        "Mechs":  46
+    },
+    {
+        "Key":  "TOP",
+        "Category":  "Ultimate",
+        "Gid":  908,
+        "Mechs":  44
+    },
+    {
+        "Key":  "TsukuyomiUnreal",
+        "Category":  "Unreal",
+        "Gid":  1067,
+        "Mechs":  3
+    },
+    {
+        "Key":  "ShishuVc",
+        "Category":  "VariantCriterion",
+        "Gid":  1079,
+        "Mechs":  17
+    },
+    {
+        "Key":  "ShishuDeep",
+        "Category":  "VariantCriterion",
+        "Gid":  1084,
+        "Mechs":  7
+    },
+    {
+        "Key":  "AloaloVc",
+        "Category":  "VariantCriterion",
+        "Gid":  979,
+        "Mechs":  5
+    }
+]

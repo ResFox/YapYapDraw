@@ -1,0 +1,40 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <Author>Res</Author>
+    <Name>YapYap Draw</Name>
+    <InternalName>YapYapDraw</InternalName>
+    <Description>Draws boss mechanics on the arena floor.</Description>
+    <Punchline>Draw your mechanics on the floor.</Punchline>
+    <AssemblyVersion>1.0.6.1</AssemblyVersion>
+    <IconPath>images/icon.png</IconPath>
+    <IconUrl>https://raw.githubusercontent.com/ResFox/YapYapDraw/main/images/icon.png</IconUrl>
+    <Tags>triggers;vfx;draw;raid;savage;ultimate</Tags>
+    <CategoryTags>utility;combat</CategoryTags>
+    <DalamudApiLevel>15</DalamudApiLevel>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Penumbra.String" Version="1.0.7" />
+    <PackageReference Include="System.IO.Hashing" Version="9.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Engine\Resources\*.bin" />
+    <EmbeddedResource Include="images\yapyap_logo.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="images\icon.png">
+      <Link>images\icon.png</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Target Name="IncludeIconInReleaseZip" AfterTargets="DefaultDalamudPackagerRelease" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <ReleaseZip>$([MSBuild]::EnsureTrailingSlash('$(MSBuildProjectDirectory)'))$([MSBuild]::EnsureTrailingSlash('$(OutputPath)'))YapYapDraw\latest.zip</ReleaseZip>
+      <ReleaseIcon>$([MSBuild]::EnsureTrailingSlash('$(MSBuildProjectDirectory)'))$([MSBuild]::EnsureTrailingSlash('$(OutputPath)'))images\icon.png</ReleaseIcon>
+    </PropertyGroup>
+    <Exec Condition="Exists('$(ReleaseZip)') AND Exists('$(ReleaseIcon)')" Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\pack-icon.ps1&quot; &quot;$(ReleaseZip)&quot; &quot;$(ReleaseIcon)&quot;" />
+  </Target>
+</Project>

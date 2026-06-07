@@ -1,0 +1,59 @@
+[
+  {
+    "Author": "Res",
+    "Name": "YapYap Draw",
+    "InternalName": "YapYapDraw",
+    "AssemblyVersion": "1.0.6.1",
+    "TestingAssemblyVersion": "1.0.6.1",
+    "Punchline": "Draw your mechanics on the floor.",
+    "Description": "Draws boss mechanics on the arena floor.",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "RepoUrl": "https://github.com/ResFox/YapYapDraw",
+    "IconUrl": "https://raw.githubusercontent.com/ResFox/YapYapDraw/main/images/icon.png",
+    "Tags": [
+      "triggers",
+      "vfx",
+      "draw",
+      "raid",
+      "savage",
+      "ultimate"
+    ],
+    "CategoryTags": [
+      "utility",
+      "combat"
+    ],
+    "DownloadLinkInstall": "https://github.com/ResFox/YapYapDraw/raw/main/bin/Release/YapYapDraw/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/ResFox/YapYapDraw/raw/main/bin/Release/YapYapDraw/latest.zip",
+    "DownloadLinkTesting": "https://github.com/ResFox/YapYapDraw/raw/main/bin/Release/YapYapDraw/latest.zip"
+  },
+  {
+    "Author": "Res",
+    "Name": "YapYap",
+    "InternalName": "YapYap",
+    "AssemblyVersion": "1.0.0.14",
+    "TestingAssemblyVersion": "1.0.0.14",
+    "Punchline": "Yap yap yap, but it calls your mechanics.",
+    "Description": "A clean fight log and custom trigger overlay. Watch every cast and status in real time, then right-click any line to build your own TTS and on-screen callout.",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "RepoUrl": "https://github.com/ResFox/YapYap",
+    "IconUrl": "https://raw.githubusercontent.com/ResFox/YapYap/main/YapYap/Images/icon.png",
+    "Tags": [
+      "triggers",
+      "callouts",
+      "tts",
+      "log",
+      "raid",
+      "savage",
+      "ultimate"
+    ],
+    "CategoryTags": [
+      "utility",
+      "combat"
+    ],
+    "DownloadLinkInstall": "https://github.com/ResFox/YapYap/raw/main/YapYap/bin/Release/YapYap/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/ResFox/YapYap/raw/main/YapYap/bin/Release/YapYap/latest.zip",
+    "DownloadLinkTesting": "https://github.com/ResFox/YapYap/raw/main/YapYap/bin/Release/YapYap/latest.zip"
+  }
+]

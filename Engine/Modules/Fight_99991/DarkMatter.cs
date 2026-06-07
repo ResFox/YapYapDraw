@@ -1,0 +1,34 @@
+using System.Collections.Generic;
+using Dalamud.Game.ClientState.Objects.Types;
+using YapYapDraw.Engine.Element;
+using YapYapDraw.Engine.Helper;
+using YapYapDraw.Engine.Managers;
+using YapYapDraw.Engine.ModuleSetup;
+
+namespace YapYapDraw.Modules.Fight_99991;
+
+public class DarkMatter : ISpecialAction
+{
+    public override string Name => "Dark Matter";
+
+    public override HashSet<uint> ActionID => new HashSet<uint>();
+
+    public override void OnTargetIconEvent(IGameObject target, uint icon, ulong TargetID)
+    {
+        if (icon == 364)
+        {
+            DrawManager.Draw(new DrawElement
+            {
+                drawAvfx = "general_1bxf",
+                radiusX = 8f,
+                radiusZ = 8f,
+                drawOnObject = true,
+                hitCounter = new HitCounter
+                {
+                    ActionID = new HashSet<uint> { 35639u },
+                    TargetHitCount = 3
+                }
+            }, target);
+        }
+    }
+}

@@ -1,0 +1,17 @@
+## Editor / tooling
+.vs/
+.idea/
+*.user
+*.suo
+
+## Build output
+bin/
+obj/
+
+## Keep the packaged release so the repo download links resolve
+!bin/
+bin/*
+!bin/Release/
+bin/Release/*
+!bin/Release/YapYapDraw/
+!bin/Release/YapYapDraw/**
