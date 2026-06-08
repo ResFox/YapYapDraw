@@ -4,6 +4,7 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
+using Dalamud.Game.Chat;
 using Dalamud.Plugin.Services;
 using YapYapDraw.Logging;
 using YapYapDraw.Engine;
@@ -29,6 +30,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static ITextureProvider     TextureProvider { get; private set; } = null!;
     [PluginService] internal static IGameGui              GameGui         { get; private set; } = null!;
     [PluginService] internal static IPartyList           PartyList       { get; private set; } = null!;
+    [PluginService] internal static IChatGui             ChatGui         { get; private set; } = null!;
     [PluginService] internal static IPluginLog           Log             { get; private set; } = null!;
 
     private const string CmdMain  = "/yapdraw";
@@ -66,13 +68,15 @@ public sealed class Plugin : IDalamudPlugin
         ConfigStatic  = Configuration;
 
         Capture = new CombatLogCapture(Configuration, GameInterop, Log);
-        Host    = new FightModuleHost(Log);
+        Host    = new FightModuleHost(Log, Capture);
         Engine  = new QuickDrawEngine(Configuration, Log);
         Catalog = new FightCatalog(PluginInterface.GetPluginConfigDirectory(), Log);
 
-        Capture.OnEvent += Host.OnEvent;
-        Capture.OnEvent += Engine.Handle;
-        Capture.OnEvent += Catalog.Record;
+        Capture.OnEvent   += Host.OnEvent;
+        Capture.OnEvent   += Engine.Handle;
+        Capture.OnEvent   += Catalog.Record;
+        Capture.OnNpcYell += Host.HandleNpcYell;
+        ChatGui.ChatMessage += OnChatMessage;
 
         _debugHud      = new DebugHud(this);
         _logWindow     = new LogWindow(this);
@@ -114,9 +118,11 @@ public sealed class Plugin : IDalamudPlugin
     public void Dispose()
     {
         Framework.Update -= OnFrameworkUpdate;
-        Capture.OnEvent  -= Host.OnEvent;
-        Capture.OnEvent  -= Engine.Handle;
-        Capture.OnEvent  -= Catalog.Record;
+        ChatGui.ChatMessage -= OnChatMessage;
+        Capture.OnEvent   -= Host.OnEvent;
+        Capture.OnEvent   -= Engine.Handle;
+        Capture.OnEvent   -= Catalog.Record;
+        Capture.OnNpcYell -= Host.HandleNpcYell;
         try { Catalog.Save(); } catch (Exception ex) { Log.Debug($"[YapYapDraw] catalog save: {ex.Message}"); }
 
         PluginInterface.UiBuilder.Draw         -= WindowSystem.Draw;
@@ -135,8 +141,7 @@ public sealed class Plugin : IDalamudPlugin
         CommandManager.RemoveHandler(CmdShort);
     }
 
-    private void OnFrameworkUpdate(IFramework framework)
-    {
+    private void OnFrameworkUpdate(IFramework framework){
         bool inCombat = Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.InCombat];
         Capture.NotifyCombat(inCombat);
 
@@ -151,6 +156,13 @@ public sealed class Plugin : IDalamudPlugin
         Engine.Tick();
         Catalog.MaybeSave();
         _quickDrawEditor.TickGroundPick();
+    }
+
+    private void OnChatMessage(IHandleableChatMessage message)
+    {
+        if ((int)message.LogKind - 41 <= 8)
+            return;
+        Host.HandleChatMessage((uint)(int)message.LogKind, message.Message.TextValue);
     }
 
     private void OnCommand(string command, string args)

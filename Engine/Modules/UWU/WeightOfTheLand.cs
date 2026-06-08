@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using YapYapDraw.Engine.Element;
-using YapYapDraw.Engine.Helper;
 using YapYapDraw.Engine.ModuleSetup;
 using YapYapDraw.Engine.Struct;
 

@@ -116,6 +116,7 @@ public sealed class CombatLogCapture : IDisposable
     }
 
     public event Action<LogEvent>? OnEvent;
+    public event Action<ulong, ushort>? OnNpcYell;
 
     public bool   ActionEffectInstalled { get; private set; }
     public bool   CastHookInstalled     { get; private set; }
@@ -169,6 +170,20 @@ public sealed class CombatLogCapture : IDisposable
         "48 8B D1 48 8D 0D ?? ?? ?? ?? E9 ?? ?? ?? ?? CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC 40 53 56";
     public bool   TimelineSyncInstalled { get; private set; }
 
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 1)]
+    private struct NpcYellPacket
+    {
+        public ulong  SourceId;
+        public int    Padding;
+        public ushort MessageId;
+    }
+
+    private unsafe delegate void ProcessNpcYellDelegate(NpcYellPacket* data);
+    private Hook<ProcessNpcYellDelegate>? _npcYellHook;
+    private const string NpcYellSig =
+        "48 83 EC 68 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 44 24 ?? 0F 10 41 10";
+    public bool NpcYellInstalled { get; private set; }
+
     // Actor-attached VFX create (the game's effect "tells" played on a caster/target).
     // Same function the draw engine itself calls, so a pass-through is required.
     private delegate nint ActorVfxCreateDelegate(nint path, nint caster, nint target, float a4, char a5, ushort a6, char a7);
@@ -184,6 +199,7 @@ public sealed class CombatLogCapture : IDisposable
     public string RecentMapEffects { get; private set; } = "";
 
     private const uint CategoryTargetIcon = 34;
+    private const uint CategoryActorTargetVfx = 184;
     private const uint CategoryPlayActionTimeline = 407;
     private const uint CategoryEventObjectAnim    = 413;
 
@@ -258,6 +274,18 @@ public sealed class CombatLogCapture : IDisposable
             _log.Information($"[YapYapDraw] TimelineSync feed unavailable on this game build: {ex.Message}");
         }
 
+        try
+        {
+            _npcYellHook = interop.HookFromSignature<ProcessNpcYellDelegate>(
+                NpcYellSig, NpcYellDetour);
+            _npcYellHook.Enable();
+            NpcYellInstalled = true;
+        }
+        catch (Exception ex)
+        {
+            _log.Information($"[YapYapDraw] NpcYell feed unavailable on this game build: {ex.Message}");
+        }
+
         VfxContainerHooks.Init(this, interop, Plugin.SigScanner, _log);
 
         try
@@ -314,6 +342,21 @@ public sealed class CombatLogCapture : IDisposable
         return null;
     }
 
+    private unsafe void NpcYellDetour(NpcYellPacket* data)
+    {
+        _npcYellHook!.Original(data);
+        try
+        {
+            if (!ShouldCapture() || data == null) return;
+            try { OnNpcYell?.Invoke(data->SourceId, data->MessageId); }
+            catch (Exception ex) { _log.Debug($"[YapYapDraw] npc-yell dispatch: {ex.Message}"); }
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"[YapYapDraw] npc-yell error: {ex.Message}");
+        }
+    }
+
     private unsafe void ProcessTimelineSyncDetour(PlayActionTimelineSyncPacket* data)
     {
         _timelineSyncHook!.Original(data);
@@ -355,6 +398,7 @@ public sealed class CombatLogCapture : IDisposable
         try { _actorControlHook?.Dispose(); } catch { }
         try { _mapEffectHook?.Dispose(); } catch { }
         try { _timelineSyncHook?.Dispose(); } catch { }
+        try { _npcYellHook?.Dispose(); } catch { }
         try { _actorVfxHook?.Dispose(); } catch { }
         VfxContainerHooks.Dispose();
     }
@@ -397,8 +441,16 @@ public sealed class CombatLogCapture : IDisposable
         _frames.Clear();
         _frameNames.Clear();
         _currentPull = 0;
+        ResetLiveState();
         try { if (File.Exists(LogFilePath)) File.Delete(LogFilePath); }
         catch (Exception ex) { _log.Debug($"[YapYapDraw] log wipe failed: {ex.Message}"); }
+    }
+
+    public void ResetLiveState()
+    {
+        _activeTethers.Clear();
+        _activeHeadmarkers.Clear();
+        Data.TetherPlayer.Clear();
     }
 
     // The captured log lives on disk so it survives plugin reloads and game
@@ -638,8 +690,7 @@ public sealed class CombatLogCapture : IDisposable
                           || (DateTime.Now - _combatLeftAt).TotalSeconds > 8;
             if (freshPull)
             {
-                _activeTethers.Clear();
-                Data.TetherPlayer.Clear();
+                ResetLiveState();
                 _currentPull = _pulls.Count + 1;
                 _pulls.Add(new PullInfo
                 {
@@ -1206,8 +1257,8 @@ public sealed class CombatLogCapture : IDisposable
 
             if (category == CategoryTargetIcon)
             {
-                if (p2 == 0) _activeHeadmarkers.Remove(actorId);
-                else _activeHeadmarkers[actorId] = p2;
+                if (p1 == 0) _activeHeadmarkers.Remove(actorId);
+                else _activeHeadmarkers[actorId] = p1;
 
                 var aObj = Plugin.ObjectTable.SearchById(actorId);
                 var name = aObj?.Name.TextValue ?? "";
@@ -1217,9 +1268,9 @@ public sealed class CombatLogCapture : IDisposable
                     SourceId   = actorId,
                     SourceName = name,
                     SourceKind = aObj is IBattleChara abc ? Classify(abc) : ActorKind.Other,
-                    DataId     = p2,
-                    Param1     = p3,
-                    Name       = $"Headmarker {p2:X4}",
+                    DataId     = p1,
+                    Param1     = p2,
+                    Name       = $"Headmarker {p1:X4}",
                 });
             }
             else if (category == CategoryPlayActionTimeline)
@@ -1235,7 +1286,17 @@ public sealed class CombatLogCapture : IDisposable
                     SourceKind = sObj is IBattleChara tbc2 ? Classify(tbc2) : ActorKind.Other,
                     DataId     = p1,
                     Name       = $"Timeline {p1:X4}",
-                }, _config.ShowControl);
+                });
+            }
+            else if (category == CategoryActorTargetVfx)
+            {
+                QueueFromHook(new LogEvent
+                {
+                    Kind     = LogKind.ActorTargetVfx,
+                    SourceId = actorId,
+                    DataId   = p1,
+                    Name     = $"TargetVfx {p1:X4}",
+                });
             }
             else if (category == CategoryEventObjectAnim)
             {

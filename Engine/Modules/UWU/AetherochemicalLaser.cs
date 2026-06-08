@@ -7,7 +7,7 @@ namespace YapYapDraw.Modules.UWU;
 
 public class AetherochemicalLaser : ISpecialAction
 {
-    public override string Name => "P3 Aetherochemical Laser";
+    public override string Name => "Aetherochemical Laser";
 
     public override uint Phase => 4u;
 

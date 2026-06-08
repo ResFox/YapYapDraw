@@ -13,7 +13,7 @@ namespace YapYapDraw.Modules.UWU;
 
 public class SearingWind : ISpecialAction
 {
-    public override string Name => "Searing Wind (buff)";
+    public override string Name => "Searing Wind";
 
     public override uint Phase => 2u;
 

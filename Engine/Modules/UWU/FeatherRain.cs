@@ -17,14 +17,13 @@ public class FeatherRain : ISpecialAction
 
     public override void OnActorPlayActionTimelineEvent(IGameObject source, uint id)
     {
-        bool matches = id == 7738;
-        if (matches)
+        bool ok = id == 7738;
+        if (ok)
         {
             uint baseId = source.BaseId;
-            bool baseIdMatches = baseId - 8722 <= 1;
-            matches = baseIdMatches;
+            ok = baseId - 8722 <= 1;
         }
-        if (!matches)
+        if (!ok)
         {
             return;
         }

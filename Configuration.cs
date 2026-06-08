@@ -95,5 +95,8 @@ public sealed class Configuration : IPluginConfiguration
     public bool DebugHud    { get; set; }
     public bool OpenOnLogin { get; set; }
 
+    // Dev: bind UMAD modules outside the duty (e.g. AnoMech sim in an Inn).
+    public bool ForceUmadActive { get; set; }
+
     public void Save() => Plugin.PluginInterface.SavePluginConfig(this);
 }

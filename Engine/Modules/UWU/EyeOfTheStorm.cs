@@ -7,7 +7,7 @@ namespace YapYapDraw.Modules.UWU;
 
 public class EyeOfTheStorm : ISpecialAction
 {
-    public override string Name => "Eye of the Typhoon";
+    public override string Name => "Eye of the Storm";
 
     public override uint Phase => 1u;
 

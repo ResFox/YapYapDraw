@@ -13,7 +13,7 @@ namespace YapYapDraw.Modules.UWU;
 
 public class CrimsonCyclone : ISpecialAction
 {
-    public override string Name => "P1 Crimson Cyclone";
+    public override string Name => "P4 Crimson Cyclone";
 
     public override uint Phase => 4u;
 

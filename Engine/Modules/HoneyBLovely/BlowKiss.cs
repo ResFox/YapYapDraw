@@ -1,0 +1,20 @@
+using System.Collections.Generic;
+using YapYapDraw.Engine.Element;
+using YapYapDraw.Engine.ModuleSetup;
+using YapYapDraw.Engine.Struct;
+
+namespace YapYapDraw.Modules.HoneyBLovely;
+
+public class BlowKiss : ISpecialAction
+{
+	public override string Name => "Blow Kiss";
+
+	public override uint Phase => 1u;
+
+	public override HashSet<uint> ActionID => new HashSet<uint> { 37235u };
+
+	public override void OnActionCast(ActorCastInfo info)
+	{
+		SimpleElement.Fan(info, 40f, 120);
+	}
+}

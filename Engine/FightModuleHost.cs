@@ -62,21 +62,33 @@ public sealed class FightModuleHost : IDisposable
     }).ToList();
 
     private readonly IPluginLog _log;
+    private readonly CombatLogCapture? _capture;
     private readonly List<FightPack> _packs = new();
     private readonly ResourceService? _resourceService;
     private FightPack? _active;
     private bool _hooksReady;
     private uint _lastTerritory;
+    private uint _lastWeather;
     private bool _lastInCombat;
+    private bool _lastForceUmad;
+
+    private const string UmadFightKey = "DancingMad";
+
+    private static bool ForceUmadActive => YapYapDraw.Plugin.ConfigStatic?.ForceUmadActive ?? false;
+
+    public bool UmadForced => ForceUmadActive && _active?.Name == UmadFightKey;
 
     public bool HooksInstalled => _hooksReady;
     public int  ModuleCount    => _active?.Actions.Count ?? _packs.Sum(p => p.Actions.Count);
     public uint TerritoryId    => _active?.Territory ?? 0;
-    public string FightName      => _active?.Name ?? "none";
+    public string FightName => _active == null
+        ? "none"
+        : UmadForced ? $"{_active.Name} (forced)" : _active.Name;
 
-    public FightModuleHost(IPluginLog log)
+    public FightModuleHost(IPluginLog log, CombatLogCapture? capture = null)
     {
         _log = log;
+        _capture = capture;
 
         foreach (var loaded in ModuleRegistry.LoadAll())
             RegisterFight(loaded.Host, loaded.Mechanics);
@@ -181,7 +193,20 @@ public sealed class FightModuleHost : IDisposable
     private void ResolveActive()
     {
         var territory = YapYapDraw.Plugin.ClientState.TerritoryType;
-        _active = _packs.FirstOrDefault(p => p.Territory != 0 && p.Territory == territory);
+        var byTerritory = _packs.FirstOrDefault(p => p.Territory != 0 && p.Territory == territory);
+        if (byTerritory != null)
+        {
+            _active = byTerritory;
+            return;
+        }
+
+        if (ForceUmadActive)
+        {
+            _active = _packs.FirstOrDefault(p => p.Name == UmadFightKey);
+            return;
+        }
+
+        _active = null;
     }
 
     private bool InZone
@@ -189,34 +214,53 @@ public sealed class FightModuleHost : IDisposable
         get
         {
             if (_active == null) return false;
+            if (UmadForced) return true;
             return _active.Territory == 0 || YapYapDraw.Plugin.ClientState.TerritoryType == _active.Territory;
         }
     }
 
     public void Tick()
     {
+        uint weather = 0;
         try
         {
             unsafe
             {
                 var env = EnvManager.Instance();
                 if (env != null)
-                    FightRuntime.SetWeather(env->ActiveWeather);
+                    weather = env->ActiveWeather;
             }
         }
         catch { }
 
         var territory = YapYapDraw.Plugin.ClientState.TerritoryType;
+        bool forceUmad = ForceUmadActive;
         if (territory != _lastTerritory)
         {
             _lastTerritory = territory;
+            _lastWeather    = weather;
+            _lastForceUmad = forceUmad;
             ResolveActive();
             ResetAll();
+        }
+        else if (forceUmad != _lastForceUmad)
+        {
+            _lastForceUmad = forceUmad;
+            ResolveActive();
+            if (forceUmad) ResetAll();
+        }
+
+        FightRuntime.SetWeather(weather);
+        if (weather != _lastWeather)
+        {
+            uint old = _lastWeather;
+            _lastWeather = weather;
+            DispatchWeatherChange(old, weather);
         }
 
         bool inCombat = YapYapDraw.Plugin.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.InCombat];
         if (inCombat && !_lastInCombat) ResetAll();
-        if (!inCombat && _lastInCombat) CleanVfx();
+        if (!inCombat && _lastInCombat && !UmadForced) CleanVfx();
         _lastInCombat = inCombat;
 
         if (_active == null)
@@ -270,6 +314,7 @@ public sealed class FightModuleHost : IDisposable
     private void ResetAll()
     {
         VfxBlocker.ClearSyncedBlocks();
+        _capture?.ResetLiveState();
         Data.Clear();
         foreach (var pack in _packs)
         {
@@ -313,13 +358,56 @@ public sealed class FightModuleHost : IDisposable
                 case LogKind.Added:         HandleAdded(e);      break;
                 case LogKind.Tether:        HandleTether(e);     break;
                 case LogKind.TetherCancel:  HandleTetherCancel(e); break;
-                case LogKind.EventObject:   HandleEventObject(e); break;
-                case LogKind.ActorControl:  HandleActorControl(e); break;
+                case LogKind.EventObject:     HandleEventObject(e); break;
+                case LogKind.ActorControl:    HandleActorControl(e); break;
+                case LogKind.ActorTargetVfx:  HandleActorTargetVfx(e); break;
             }
         }
         catch (Exception ex)
         {
             _log.Debug($"[YapYapDraw] dispatch {e.Kind}: {ex.Message}");
+        }
+    }
+
+    public void HandleChatMessage(uint chatType, string content)
+    {
+        if (!_hooksReady) return;
+        ResolveActive();
+        if (!InZone || _active == null) return;
+        if (MasterOff || FightDisabled(_active.Name)) return;
+
+        foreach (var a in Actions)
+        {
+            try { a.OnChatMessage(chatType, content); }
+            catch (Exception ex) { _log.Debug($"[YapYapDraw] chat dispatch: {ex.Message}"); }
+        }
+    }
+
+    public void HandleNpcYell(ulong sourceId, ushort message)
+    {
+        if (!_hooksReady) return;
+        ResolveActive();
+        if (!InZone || _active == null) return;
+        if (MasterOff || FightDisabled(_active.Name)) return;
+
+        foreach (var a in Actions)
+        {
+            try { a.OnNpcYell(sourceId, message); }
+            catch (Exception ex) { _log.Debug($"[YapYapDraw] npc-yell dispatch: {ex.Message}"); }
+        }
+    }
+
+    private void DispatchWeatherChange(uint oldWeather, uint newWeather)
+    {
+        if (!_hooksReady) return;
+        ResolveActive();
+        if (!InZone || _active == null) return;
+        if (MasterOff || FightDisabled(_active.Name)) return;
+
+        foreach (var a in Actions)
+        {
+            try { a.OnWeatherChange(oldWeather, newWeather); }
+            catch (Exception ex) { _log.Debug($"[YapYapDraw] weather dispatch: {ex.Message}"); }
         }
     }
 
@@ -475,6 +563,12 @@ public sealed class FightModuleHost : IDisposable
     {
         foreach (var a in Actions)
             a.OnActorControl(e.SourceId, e.Category, (uint)e.Param1, (uint)e.Param2, (uint)e.Param3, (uint)e.Param4);
+    }
+
+    private void HandleActorTargetVfx(LogEvent e)
+    {
+        foreach (var a in Actions)
+            a.OnActorTargetVfx(e.SourceId, e.DataId);
     }
 
     public void Dispose()

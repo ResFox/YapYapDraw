@@ -11,12 +11,15 @@ namespace YapYapDraw.Modules.DancingMad.P1;
 
 public class FerociousLaceration : ISpecialAction
 {
+    private ulong _sourceId;
+
     public override string Name => "Ferocious Laceration";
 
     public override HashSet<uint> ActionID => new HashSet<uint> { 50179u };
 
     public override void OnActionCast(ActorCastInfo info)
     {
+        _sourceId = info.SourceId;
         IGameObject? source = info.SourceId.GameObject();
         IGameObject? target = info.TargetId.GameObject();
         HitCounter hitCounter = new HitCounter
@@ -28,7 +31,7 @@ public class FerociousLaceration : ISpecialAction
 
     public override void OnAbilityCast(ActorAbilityInfo info)
     {
-        IGameObject target = PlayerHelper.Tank.Where((IGameObject o) => o != info.Source.TargetObject).FirstOrDefault();
+        IGameObject? target = PlayerHelper.RaidByEnmity(_sourceId).Skip(1).FirstOrDefault();
         IGameObject source = info.Source;
         HitCounter hitCounter = new HitCounter
         {

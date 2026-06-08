@@ -52,6 +52,18 @@ public sealed class DebugHud
             ImGui.TextWrapped($"  mapfx: {cap.RecentMapEffects}");
 
         ImGui.Separator();
+        var cfg = _plugin.Configuration;
+        bool forceUmad = cfg.ForceUmadActive;
+        if (ImGui.Checkbox("Force UMAD active", ref forceUmad))
+        {
+            cfg.ForceUmadActive = forceUmad;
+            cfg.Save();
+        }
+        ImGui.TextDisabled("For AnoMech / sim zones outside the duty.");
+        if (host.UmadForced)
+            ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.4f, 1f), "UMAD modules listening");
+
+        ImGui.Separator();
         ImGui.TextUnformatted("UMAD preview (works in any zone)");
         if (ImGui.Button("Preview UMAD telegraphs"))
             _previewOk = Engine.Preview.UmadPreview.Run();

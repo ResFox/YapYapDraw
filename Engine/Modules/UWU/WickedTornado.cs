@@ -9,7 +9,7 @@ namespace YapYapDraw.Modules.UWU;
 
 public class WickedTornado : ISpecialAction
 {
-    public override string Name => "P1 Wicked Tornado";
+    public override string Name => "P4 Wicked Tornado";
 
     public override uint Phase => 4u;
 

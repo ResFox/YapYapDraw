@@ -9,7 +9,7 @@ namespace YapYapDraw.Modules.UWU;
 
 public class CeruleumVent : ISpecialAction
 {
-    public override string Name => "P1 Ceruleum Vent";
+    public override string Name => "Ceruleum Vent";
 
     public override uint Phase => 4u;
 

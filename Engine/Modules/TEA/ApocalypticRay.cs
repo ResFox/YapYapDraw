@@ -9,7 +9,7 @@ namespace YapYapDraw.Modules.TEA;
 
 public class ApocalypticRay : ISpecialAction
 {
-    public override string Name => "Eschatos";
+    public override string Name => "Apocalyptic Ray";
 
     public override uint Phase => 2u;
 

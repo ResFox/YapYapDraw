@@ -8,7 +8,7 @@ namespace YapYapDraw.Modules.UWU;
 
 public class Landslide : ISpecialAction
 {
-    public override string Name => "Earthquake";
+    public override string Name => "Landslide";
 
     public override uint Phase => 3u;
 

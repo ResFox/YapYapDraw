@@ -8,7 +8,7 @@ namespace YapYapDraw.Modules.UWU;
 
 public class BurstRocks : ISpecialAction
 {
-    public override string Name => "Burst (rocks)";
+    public override string Name => "Burst Rocks";
 
     public override uint Phase => 3u;
 

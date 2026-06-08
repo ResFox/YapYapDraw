@@ -11,7 +11,7 @@ namespace YapYapDraw.Modules.P12S.P12S;
 
 public class EngravementOfSouls : ISpecialAction
 {
-    public override string Name => "Engravement of Souls (tower)";
+    public override string Name => "Engravement of Souls (black tower)";
 
     public override uint Phase => 1u;
 

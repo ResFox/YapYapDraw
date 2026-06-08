@@ -23,6 +23,7 @@ public enum LogKind : byte
     TimelineSync,
     EventObject,
     Vfx,
+    ActorTargetVfx,
 }
 
 public enum ActorKind : byte

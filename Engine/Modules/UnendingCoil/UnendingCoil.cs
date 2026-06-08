@@ -10,6 +10,4 @@ public class UnendingCoil : DrawModule
         GroupType = GroupType.CFC,
         GroupID = 280u
     };
-
-    public override string Author => "Res";
 }

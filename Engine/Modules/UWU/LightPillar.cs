@@ -7,7 +7,7 @@ namespace YapYapDraw.Modules.UWU;
 
 public class LightPillar : ISpecialAction
 {
-    public override string Name => "P3 Light Pillar";
+    public override string Name => "Light Pillar";
 
     public override uint Phase => 4u;
 

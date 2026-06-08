@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using YapYapDraw.Engine.Element;
 using YapYapDraw.Engine.Enum;
+using YapYapDraw.Engine.Helper;
 using YapYapDraw.Engine.Managers;
 using YapYapDraw.Engine.ModuleSetup;
 using YapYapDraw.Engine.Struct;
@@ -10,7 +11,7 @@ namespace YapYapDraw.Modules.UWU;
 
 public class ViscousAetheroplasm : ISpecialAction
 {
-    public override string Name => "Viscous Aetheroplasm (buff)";
+    public override string Name => "Viscous Aetheroplasm";
 
     public override uint Phase => 4u;
 

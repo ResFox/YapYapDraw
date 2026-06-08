@@ -10,7 +10,7 @@ namespace YapYapDraw.Modules.UnendingCoil;
 
 public class LightningMarker : ISpecialAction
 {
-    public override string Name => "Lightning (marker)";
+    public override string Name => "Lightning";
 
     public override uint Phase => 2u;
 
