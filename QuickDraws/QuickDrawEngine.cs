@@ -239,16 +239,16 @@ public sealed class QuickDrawEngine
                 SetupLine(elem, d, e, attach, glue);
                 break;
             case QuickShape.Tower:
-                elem.drawAvfx = GroundOmen.SingleTower;
+                elem.drawAvfx = GroundOmen.SingleTowerSilent;
                 elem.radiusX = d.Radius; elem.radiusZ = d.Radius; elem.radiusY = 1f;
                 break;
             case QuickShape.Knockback:
-                elem.drawAvfx = GroundOmen.KnockBack;
+                elem.drawAvfx = GroundOmen.KnockBackSilent;
                 elem.radiusX = d.Radius; elem.radiusZ = d.Radius; elem.radiusY = 1f;
                 ApplyRotation(elem, d, faceActor);
                 break;
             case QuickShape.Laser:
-                elem.drawAvfx = GroundOmen.ArrowRect;
+                elem.drawAvfx = GroundOmen.ArrowRectSilent;
                 elem.radiusX = d.HalfWidth;
                 elem.radiusZ = d.Length;
                 elem.radiusY = 1f;

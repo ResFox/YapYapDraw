@@ -71,6 +71,20 @@ public class DrawManager
             e.refColor = new Vector4(1f, 1f, 1f, 2.5f);
             e.refTargetColor = new Vector4(1f, 1f, 1f, 2.5f);
         },
+        ["tower_noc"] = e =>
+        {
+            e.drawAvfx = SilentOmen("tower_noc", "vfx/omen/eff/yd/tower_noc.avfx", GroundOmen.SingleTower);
+        },
+        ["knockback_noc"] = e =>
+        {
+            e.drawAvfx = SilentOmen("knockback_noc", "vfx/omen/eff/yd/knockback_noc.avfx", GroundOmen.KnockBack);
+        },
+        ["laser_noc"] = e =>
+        {
+            e.drawAvfx = SilentOmen("laser_noc", "vfx/omen/eff/yd/laser_noc.avfx", GroundOmen.ArrowRect);
+            e.refColor = new Vector4(1f, 1f, 1f, 2.5f);
+            e.refTargetColor = new Vector4(1f, 1f, 1f, 2.5f);
+        },
         ["tank_lockon_3m_5s_noc"] = e =>
         {
             OmenResourceCache.RegisterRaw(Resources.tank_lockon_3m_5s_noc, "vfx/omen/eff/yd/tank_lockon_3m_5s_noc.avfx");
@@ -96,6 +110,17 @@ public class DrawManager
             e.radiusZ = 1f;
         }
     };
+
+    // Registers a sound-stripped copy of an omen and returns its path. Falls back
+    // to the stock omen (with its sound) when the silenced asset isn't bundled.
+    private static string SilentOmen(string resourceName, string path, string fallback)
+    {
+        byte[]? data = Resources.TryGet(resourceName);
+        if (data == null)
+            return fallback;
+        OmenResourceCache.RegisterRaw(data, path);
+        return path;
+    }
 
     public static List<StaticVfx> Draw(DrawElement element, List<IGameObject> target, IGameObject? castObject = null)
     {

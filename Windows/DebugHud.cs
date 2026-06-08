@@ -9,6 +9,7 @@ namespace YapYapDraw.Windows;
 public sealed class DebugHud
 {
     private readonly Plugin _plugin;
+    private bool? _previewOk;
 
     public DebugHud(Plugin plugin) => _plugin = plugin;
 
@@ -49,6 +50,16 @@ public sealed class DebugHud
             ImGui.TextColored(new Vector4(1f, 0.4f, 0.4f, 1f), $"  mapfx err: {cap.MapEffectError}");
         if (!string.IsNullOrEmpty(cap.RecentMapEffects))
             ImGui.TextWrapped($"  mapfx: {cap.RecentMapEffects}");
+
+        ImGui.Separator();
+        ImGui.TextUnformatted("UMAD preview (works in any zone)");
+        if (ImGui.Button("Preview UMAD telegraphs"))
+            _previewOk = Engine.Preview.UmadPreview.Run();
+        ImGui.SameLine();
+        if (ImGui.Button("Clear draws"))
+            host.CleanVfx();
+        if (_previewOk == false)
+            ImGui.TextColored(new Vector4(1f, 0.4f, 0.4f, 1f), "no local player");
 
         ImGui.End();
     }

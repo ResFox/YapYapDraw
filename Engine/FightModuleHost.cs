@@ -270,6 +270,7 @@ public sealed class FightModuleHost : IDisposable
     private void ResetAll()
     {
         VfxBlocker.ClearSyncedBlocks();
+        Data.Clear();
         foreach (var pack in _packs)
         {
             foreach (var a in pack.Actions)

@@ -213,6 +213,12 @@ public class GroundOmen
 
     public const string ShareLazerGround5s = "ShareLazerGround5s";
 
+    public const string SingleTowerSilent = "tower_noc";
+
+    public const string KnockBackSilent = "knockback_noc";
+
+    public const string ArrowRectSilent = "laser_noc";
+
     public static Vector4 enemyColor = new Vector4(1f, 0.549f, 0.3137f, Plugin.Config.CustomAlpha);
 
     public static Vector4 friendColor = new Vector4(0.7f, 0.9f, 1f, Plugin.Config.CustomAlpha);

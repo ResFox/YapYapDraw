@@ -638,6 +638,8 @@ public sealed class CombatLogCapture : IDisposable
                           || (DateTime.Now - _combatLeftAt).TotalSeconds > 8;
             if (freshPull)
             {
+                _activeTethers.Clear();
+                Data.TetherPlayer.Clear();
                 _currentPull = _pulls.Count + 1;
                 _pulls.Add(new PullInfo
                 {
@@ -825,11 +827,24 @@ public sealed class CombatLogCapture : IDisposable
         if (idx >= 0)
         {
             _activeTethers[idx] = (from, to, tetherId);
+            UpdateTetherStore(from, to, tetherId);
             return;
         }
 
         _activeTethers.Add((from, to, tetherId));
+        UpdateTetherStore(from, to, tetherId);
         QueueTether(from, to, tetherId);
+    }
+
+    // TetherCheck-gated draws read Data.TetherPlayer, so it has to stay in lockstep
+    // with the live tether set or those draws never resolve.
+    private static void UpdateTetherStore(uint from, uint to, ushort tetherId)
+    {
+        var existing = Data.TetherPlayer.FirstOrDefault(t => t.From == from && t.To == to);
+        if (existing != null)
+            existing.TetherID = tetherId;
+        else
+            Data.TetherPlayer.Add(new YapYapDraw.Engine.Memory.TetherInfo(from, to, tetherId));
     }
 
     internal void NotifyTetherCancelFromVfx(uint from)
@@ -837,6 +852,7 @@ public sealed class CombatLogCapture : IDisposable
         if (!ShouldCapture()) return;
 
         _activeTethers.RemoveAll(t => t.From == from);
+        Data.TetherPlayer.RemoveAll(t => t.From == from);
         QueueFromHook(new LogEvent
         {
             Kind     = LogKind.TetherCancel,

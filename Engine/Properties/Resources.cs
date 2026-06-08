@@ -47,4 +47,10 @@ internal static class Resources
     internal static byte[] tmp_org_fan => Load("tmp_org_fan");
     internal static byte[] tmp_rect => Load("tmp_rect");
     internal static byte[] tmp_rect2 => Load("tmp_rect2");
+
+    internal static byte[]? TryGet(string name)
+    {
+        try { return Load(name); }
+        catch { return null; }
+    }
 }
