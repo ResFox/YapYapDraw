@@ -5,6 +5,7 @@ using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.ClientState.Statuses;
 using YapYapDraw.Engine.Vfx;
 using YapYapDraw.Engine.Helper;
+using YapYapDraw.Engine.Interop;
 using YapYapDraw.Engine.Managers;
 using YapYapDraw.Engine.Struct.Vfx;
 
@@ -80,6 +81,14 @@ public class ActorVfx : BaseVfx
 
     public unsafe void Create()
     {
+        // spawn is delayed, so the actor can be gone by now; a stale pointer makes
+        // other vfx hooks deref freed memory and crash, so only fire while both are live
+        if (!IsLiveActor(caster) || !IsLiveActor(target))
+        {
+            Remove();
+            return;
+        }
+
         Vfx = (VfxStruct*)ClientOmenHooks.createActorVfx(Path, caster, target, -1f, '\0', 0, '\0');
         if (Vfx != null && Vfx != (VfxStruct*)IntPtr.Zero)
         {
@@ -90,6 +99,22 @@ public class ActorVfx : BaseVfx
             }
             _initTime = Environment.TickCount64;
         }
+    }
+
+    private static bool IsLiveActor(nint address)
+    {
+        if (address == IntPtr.Zero)
+        {
+            return false;
+        }
+        foreach (IGameObject obj in Svc.Objects)
+        {
+            if (obj != null && obj.Address == address)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     public unsafe override void Remove()
