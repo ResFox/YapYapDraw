@@ -33,7 +33,11 @@ public class ChainTrap : ISpecialAction
         foreach (StaticVfx aoe in aoes)
         {
             if (_knockbackSource.TryGetValue(aoe, out IGameObject? source) && source != null)
+            {
+                if (aoe.KnockBackCheck != null)
+                    aoe.KnockBackCheck.OriginPos = source.Position;
                 aoe.Enable = new WPos(lp.Position).InCircle(new WPos(source.Position), 6f);
+            }
             else
                 aoe.Enable = false;
         }
@@ -73,9 +77,14 @@ public class ChainTrap : ISpecialAction
                 drawAvfx = "e5d1_b1_kblaser_t1",
                 radiusX = 1f,
                 radiusZ = 14f,
+                drawOnObject = true,
                 destroyTime = 5000f,
                 delayDrawTime = (info.Time - 5f) * 1000f,
-                target = target,
+                KnockBackCheck = new KnockBackCheck
+                {
+                    OriginPos = target.Position,
+                    Antiable = false
+                },
                 hitCounter = new HitCounter
                 {
                     ActionID = new HashSet<uint> { 47783u }

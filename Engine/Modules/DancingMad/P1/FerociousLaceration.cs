@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Game.ClientState.Objects.Types;
 using YapYapDraw.Engine.Element;
+using YapYapDraw.Engine.Enum;
 using YapYapDraw.Engine.Helper;
 using YapYapDraw.Engine.Managers;
 using YapYapDraw.Engine.ModuleSetup;
@@ -39,6 +40,8 @@ public class FerociousLaceration : ISpecialAction
             drawAvfx = "gl_fan120_1bf",
             radiusX = 100f,
             radiusZ = 100f,
+            refColor = GroundOmen.Red,
+            refTargetColor = GroundOmen.Red,
             target = info.TargetId.GameObject(),
             hitCounter = new HitCounter
             {

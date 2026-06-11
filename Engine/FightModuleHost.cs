@@ -71,6 +71,7 @@ public sealed class FightModuleHost : IDisposable
     private uint _lastWeather;
     private bool _lastInCombat;
     private bool _lastForceUmad;
+    private bool _lastPartyAlive;
 
     private const string UmadFightKey = "DancingMad";
 
@@ -262,6 +263,19 @@ public sealed class FightModuleHost : IDisposable
         if (inCombat && !_lastInCombat) ResetAll();
         if (!inCombat && _lastInCombat && !UmadForced) CleanVfx();
         _lastInCombat = inCombat;
+
+        // a wipe doesn't always drop the combat flag cleanly, so clear leftover draws once the whole party is dead
+        bool partyAlive = false;
+        foreach (var p in Helper.PlayerHelper.AllPlayers)
+        {
+            if (p is IBattleChara { IsDead: false } bc && bc.CurrentHp > 0)
+            {
+                partyAlive = true;
+                break;
+            }
+        }
+        if (_active != null && _lastPartyAlive && !partyAlive) CleanVfx();
+        _lastPartyAlive = partyAlive;
 
         if (_active == null)
         {

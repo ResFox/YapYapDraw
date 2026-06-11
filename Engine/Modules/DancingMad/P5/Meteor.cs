@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Game.ClientState.Objects.Types;
 using YapYapDraw.Engine.Element;
+using YapYapDraw.Engine.Enum;
 using YapYapDraw.Engine.Helper;
 using YapYapDraw.Engine.Interop;
 using YapYapDraw.Engine.Managers;
@@ -45,6 +46,8 @@ public class Meteor : ISpecialAction
             drawAvfx = "general_1bzt",
             radiusX = 5f,
             radiusZ = 5f,
+            refColor = GroundOmen.Red,
+            refTargetColor = GroundOmen.Red,
             hitCounter = new HitCounter
             {
                 ActionID = new HashSet<uint> { 47954u }
