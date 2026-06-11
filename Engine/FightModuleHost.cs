@@ -315,6 +315,7 @@ public sealed class FightModuleHost : IDisposable
     {
         VfxBlocker.ClearSyncedBlocks();
         _capture?.ResetLiveState();
+        FightClientState.ClearEnmity();
         Data.Clear();
         foreach (var pack in _packs)
         {

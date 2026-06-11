@@ -47,22 +47,31 @@ public static class PlayerHelper
 
     public static IEnumerable<IGameObject> RaidByEnmity(ulong primaryTargetId, bool allowGuessing = true)
     {
-        var hate = FightClientState.CurrentTargetHate;
-        if (hate.TargetId != primaryTargetId)
-        {
-            if (!allowGuessing)
-                return Array.Empty<IGameObject>();
+        var enmity = FightClientState.CurrentTargetEnmity;
+        FightClientState.EnmityEntry[]? entries = null;
+        if (enmity.TargetId == primaryTargetId)
+            entries = enmity.Entries;
+        else if (FightClientState.TryGetEnmity(primaryTargetId, out var cached))
+            entries = cached;
 
-            ulong bossTargetId = Svc.Objects.SearchById(primaryTargetId)?.TargetObject?.GameObjectId ?? 0;
-            return AllPlayers.OrderBy(p => GuessEnmityOrder(p, bossTargetId));
+        if (entries != null)
+        {
+            var ordered = entries
+                .Where(h => h.EntityId != 0)
+                .OrderByDescending(h => h.Enmity)
+                .Select(h => Svc.Objects.SearchById(h.EntityId))
+                .Where(o => o != null)
+                .Cast<IGameObject>()
+                .ToList();
+            if (ordered.Count > 0)
+                return ordered;
         }
 
-        return hate.Entries
-            .Where(h => h.EntityId != 0)
-            .OrderByDescending(h => h.Enmity)
-            .Select(h => Svc.Objects.SearchById(h.EntityId))
-            .Where(o => o != null)
-            .Cast<IGameObject>();
+        if (!allowGuessing)
+            return Array.Empty<IGameObject>();
+
+        ulong bossTargetId = Svc.Objects.SearchById(primaryTargetId)?.TargetObject?.GameObjectId ?? 0;
+        return AllPlayers.OrderBy(p => GuessEnmityOrder(p, bossTargetId));
     }
 
     private static int GuessEnmityOrder(IGameObject player, ulong bossTargetId)

@@ -3,6 +3,7 @@ using System.Linq;
 using Dalamud.Game.ClientState.Objects.Types;
 using YapYapDraw.Engine.Element;
 using YapYapDraw.Engine.Helper;
+using YapYapDraw.Engine.Managers;
 using YapYapDraw.Engine.ModuleSetup;
 using YapYapDraw.Engine.Struct;
 using YapYapDraw.Engine.Util;
@@ -12,31 +13,57 @@ namespace YapYapDraw.Modules.DancingMad.P1;
 public class FerociousLaceration : ISpecialAction
 {
     private ulong _sourceId;
+    private IGameObject? _target;
+    private bool _secondTB;
 
     public override string Name => "Ferocious Laceration";
 
-    public override HashSet<uint> ActionID => new HashSet<uint> { 50179u };
+    public override HashSet<uint> ActionID => new HashSet<uint> { 50179u, 50401u };
+
+    public override void Update()
+    {
+        if (aoes.Count == 0)
+            return;
+
+        aoes[0].Target = _secondTB
+            ? PlayerHelper.RaidByEnmity(_sourceId).Skip(1).FirstOrDefault()
+            : _target;
+    }
 
     public override void OnActionCast(ActorCastInfo info)
     {
         _sourceId = info.SourceId;
-        IGameObject? source = info.SourceId.GameObject();
-        IGameObject? target = info.TargetId.GameObject();
-        HitCounter hitCounter = new HitCounter
+        _target = info.TargetId.GameObject();
+        DrawElement element = new DrawElement
         {
-            ActionID = new HashSet<uint> { 50179u }
+            drawAvfx = "gl_fan120_1bf",
+            radiusX = 100f,
+            radiusZ = 100f,
+            target = info.TargetId.GameObject(),
+            hitCounter = new HitCounter
+            {
+                ActionID = new HashSet<uint> { 50179u, 50401u },
+                TargetHitCount = 2
+            }
         };
-        SimpleElement.FanToTarget(source, target, 100f, 120, Follow: true, default, 0f, 3000f, hitCounter);
+        aoes.Add(DrawManager.Draw(element, info.SourceId.GameObject()));
     }
 
     public override void OnAbilityCast(ActorAbilityInfo info)
     {
-        IGameObject? target = PlayerHelper.RaidByEnmity(_sourceId).Skip(1).FirstOrDefault();
-        IGameObject source = info.Source;
-        HitCounter hitCounter = new HitCounter
+        if (info.ActionId == 50179)
+            _secondTB = true;
+        if (info.ActionId == 50401)
         {
-            ActionID = new HashSet<uint> { 50401u }
-        };
-        SimpleElement.FanToTarget(source, target, 100f, 120, Follow: true, default, 0f, 3000f, hitCounter);
+            _sourceId = 0;
+            _secondTB = false;
+        }
+    }
+
+    public override void Reset()
+    {
+        _sourceId = 0;
+        _secondTB = false;
+        base.Reset();
     }
 }

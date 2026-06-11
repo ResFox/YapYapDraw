@@ -26,6 +26,7 @@ public sealed class Configuration : IPluginConfiguration
     public int M2SSweetheartDrawMode { get; set; }
     public Vector4 TopP6CosmoArrowColor { get; set; } = new(1f, 1f, 0f, 1f);
     public Vector4 FruP5HellfireColor { get; set; } = new(1f, 1f, 1f, 2f);
+    public bool DancingMadBlockShockwave { get; set; } = true;
 
     public bool ModulesEnabled { get; set; } = true;
     public HashSet<string> DisabledFights    { get; set; } = new();

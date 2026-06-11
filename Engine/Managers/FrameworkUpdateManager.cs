@@ -21,7 +21,7 @@ public static class FrameworkUpdateManager
             return;
         }
 
-        FightClientState.PollHate();
+        FightClientState.PollEnmity();
         VFXList.SyncVfxHandles();
 
         TimeHelper[] timers = TimeHelpers.ToArray();
