@@ -71,7 +71,9 @@ public sealed class FightModuleHost : IDisposable
     private uint _lastWeather;
     private bool _lastInCombat;
     private bool _lastForceUmad;
-    private bool _lastPartyAlive;
+    private DateTime _allDeadSince = DateTime.MinValue;
+    private bool _fallbackWiped;
+    private static readonly TimeSpan FallbackWipeHold = TimeSpan.FromSeconds(1.5);
 
     private const string UmadFightKey = "DancingMad";
 
@@ -264,18 +266,32 @@ public sealed class FightModuleHost : IDisposable
         if (!inCombat && _lastInCombat && !UmadForced) CleanVfx();
         _lastInCombat = inCombat;
 
-        // a wipe doesn't always drop the combat flag cleanly, so clear leftover draws once the whole party is dead
-        bool partyAlive = false;
-        foreach (var p in Helper.PlayerHelper.AllPlayers)
+        // DutyWiped clears drawings in a started duty (authoritative, handled via the
+        // plugin's IDutyState subscription). Outside one (replays, open world) fall back
+        // to a sustained all-dead read, held long enough that a mass raise won't trip it.
+        if (!YapYapDraw.Plugin.DutyState.IsDutyStarted)
         {
-            if (p is IBattleChara { IsDead: false } bc && bc.CurrentHp > 0)
+            if (PartyAllDead())
             {
-                partyAlive = true;
-                break;
+                if (_allDeadSince == DateTime.MinValue)
+                    _allDeadSince = DateTime.Now;
+                else if (!_fallbackWiped && DateTime.Now - _allDeadSince >= FallbackWipeHold)
+                {
+                    _fallbackWiped = true;
+                    if (_active != null) WipeCleanup();
+                }
+            }
+            else
+            {
+                _allDeadSince  = DateTime.MinValue;
+                _fallbackWiped = false;
             }
         }
-        if (_active != null && _lastPartyAlive && !partyAlive) CleanVfx();
-        _lastPartyAlive = partyAlive;
+        else
+        {
+            _allDeadSince  = DateTime.MinValue;
+            _fallbackWiped = false;
+        }
 
         if (_active == null)
         {
@@ -324,6 +340,30 @@ public sealed class FightModuleHost : IDisposable
 
     private static bool WeatherOk(ISpecialAction a)
         => a.WeatherID == 0 || a.WeatherID == FightRuntime.WeatherId;
+
+    // The real wipe signal: clear every drawing and reset module state so the next
+    // pull starts clean. Driven by IDutyState.DutyWiped/Recommenced/Completed.
+    public void HandleDutyWipe() => WipeCleanup();
+
+    private void WipeCleanup()
+    {
+        CleanVfx();
+        ResetAll();
+    }
+
+    // True only when at least one player is present and none are alive. An empty
+    // table (loading / fade-out) returns false so it can't read as a wipe.
+    private static bool PartyAllDead()
+    {
+        bool sawPlayer = false;
+        foreach (var p in Helper.PlayerHelper.AllPlayers)
+        {
+            if (p is not IBattleChara bc) continue;
+            sawPlayer = true;
+            if (!bc.IsDead && bc.CurrentHp > 0) return false;
+        }
+        return sawPlayer;
+    }
 
     private void ResetAll()
     {

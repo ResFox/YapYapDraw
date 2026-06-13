@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
@@ -12,8 +11,6 @@ namespace YapYapDraw.Windows;
 public sealed class HomeView
 {
     private readonly Plugin _plugin;
-    private static readonly string Version =
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
 
     private const string GithubUrl  = "https://github.com/ResFox/YapYapDraw";
     private const string DiscordUrl = "https://discord.gg/KZBxpkqbh4";
@@ -63,9 +60,28 @@ public sealed class HomeView
         ImGui.SameLine();
         if (IconButton(FontAwesomeIcon.Heart, "Ko-fi", btnW))   Util.OpenLink(KofiUrl);
 
-        ImGui.Dummy(new Vector2(0, 16f * ImGuiHelpers.GlobalScale));
+        ImGui.Dummy(new Vector2(0, 10f * ImGuiHelpers.GlobalScale));
+        string vline = $"v{Changelog.Version} - What's new";
+        float vw = ImGui.CalcTextSize(vline).X;
+        Center(vw, w);
+        if (ClickableDimmed(vline)) _plugin.OpenChangelog();
+
+        ImGui.Dummy(new Vector2(0, 14f * ImGuiHelpers.GlobalScale));
 
         DrawGuide(w);
+    }
+
+    private static bool ClickableDimmed(string text)
+    {
+        var p = ImGui.GetCursorScreenPos();
+        var size = ImGui.CalcTextSize(text);
+        ImGui.InvisibleButton($"##{text}", size);
+        bool hover = ImGui.IsItemHovered();
+        bool clicked = ImGui.IsItemClicked();
+        if (hover) ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        ImGui.GetWindowDrawList().AddText(p,
+            ImGui.ColorConvertFloat4ToU32(hover ? Ui.Accent : Ui.Dimmed), text);
+        return clicked;
     }
 
     private static bool IconButton(FontAwesomeIcon icon, string label, float width)

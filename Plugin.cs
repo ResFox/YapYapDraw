@@ -53,6 +53,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly ConfigWindow _configWindow;
     private readonly ModuleConfigWindow _moduleConfigWindow;
     private readonly QuickDrawEditorWindow _quickDrawEditor;
+    private readonly ChangelogWindow _changelogWindow;
     private readonly DebugHud     _debugHud;
 
     public Plugin()
@@ -78,16 +79,30 @@ public sealed class Plugin : IDalamudPlugin
         Capture.OnNpcYell += Host.HandleNpcYell;
         ChatGui.ChatMessage += OnChatMessage;
 
+        DutyState.DutyWiped      += OnDutyWiped;
+        DutyState.DutyRecommenced += OnDutyRecommenced;
+        DutyState.DutyCompleted  += OnDutyCompleted;
+
         _debugHud      = new DebugHud(this);
         _logWindow     = new LogWindow(this);
         _configWindow  = new ConfigWindow(this);
         _quickDrawEditor = new QuickDrawEditorWindow(this);
         _mainWindow    = new MainWindow(this, _logWindow, _configWindow);
         _moduleConfigWindow = new ModuleConfigWindow();
+        _changelogWindow = new ChangelogWindow(this);
 
         WindowSystem.AddWindow(_mainWindow);
         WindowSystem.AddWindow(_moduleConfigWindow);
         WindowSystem.AddWindow(_quickDrawEditor);
+        WindowSystem.AddWindow(_changelogWindow);
+
+        if (!Configuration.FirstRun && Configuration.LastSeenVersion != Changelog.Version)
+            _changelogWindow.IsOpen = true;
+        else if (Configuration.LastSeenVersion != Changelog.Version)
+        {
+            Configuration.LastSeenVersion = Changelog.Version;
+            Configuration.Save();
+        }
 
         CommandManager.AddHandler(CmdMain, new CommandInfo(OnCommand)
         {
@@ -115,6 +130,10 @@ public sealed class Plugin : IDalamudPlugin
             _mainWindow.Show("home");
     }
 
+    private void OnDutyWiped(Dalamud.Game.DutyState.IDutyStateEventArgs args)      => Host.HandleDutyWipe();
+    private void OnDutyRecommenced(Dalamud.Game.DutyState.IDutyStateEventArgs args) => Host.HandleDutyWipe();
+    private void OnDutyCompleted(Dalamud.Game.DutyState.IDutyStateEventArgs args)  => Host.HandleDutyWipe();
+
     public void Dispose()
     {
         Framework.Update -= OnFrameworkUpdate;
@@ -123,6 +142,9 @@ public sealed class Plugin : IDalamudPlugin
         Capture.OnEvent   -= Engine.Handle;
         Capture.OnEvent   -= Catalog.Record;
         Capture.OnNpcYell -= Host.HandleNpcYell;
+        DutyState.DutyWiped      -= OnDutyWiped;
+        DutyState.DutyRecommenced -= OnDutyRecommenced;
+        DutyState.DutyCompleted  -= OnDutyCompleted;
         try { Catalog.Save(); } catch (Exception ex) { Log.Debug($"[YapYapDraw] catalog save: {ex.Message}"); }
 
         PluginInterface.UiBuilder.Draw         -= WindowSystem.Draw;
@@ -197,6 +219,8 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     public void ShowTab(string tab) => _mainWindow.Show(tab);
+
+    public void OpenChangelog() => _changelogWindow.IsOpen = true;
 
     public void OpenModuleConfig(string title, System.Action body) => _moduleConfigWindow.Open(title, body);
 

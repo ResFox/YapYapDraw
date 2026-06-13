@@ -93,6 +93,7 @@ public sealed class Configuration : IPluginConfiguration
 
     public bool LogWindowOpen { get; set; } = true;
     public bool FirstRun    { get; set; } = true;
+    public string LastSeenVersion { get; set; } = "";
     public bool DebugHud    { get; set; }
     public bool OpenOnLogin { get; set; }
 
