@@ -12,10 +12,12 @@ using YapYapDraw.Engine.Enum;
 using YapYapDraw.Engine.Helper;
 using YapYapDraw.Engine.Managers;
 using YapYapDraw.Engine.ModuleSetup;
+using YapYapDraw.QuickDraws;
 using YapYapDraw.Engine.Struct;
 using YapYapDraw.Engine.Util;
 using YapYapDraw.Engine.Vfx;
 using YapYapDraw.Windows;
+using YapYapDraw.Logging;
 
 namespace YapYapDraw.Modules.M12S.Body;
 
@@ -32,34 +34,40 @@ public unsafe class IdyllicDream : ISpecialAction
 
     public enum PickupOrder { Defamation_1, Defamation_2, Defamation_3, Defamation_4, Stack_1, Stack_2, Stack_3, Stack_4 }
 
+    private const int CurrentConfigVersion = 2;
+
+    // Defaults below mirror the "EU Hector Uptime Caro (Defams NW/NE) Group 1" preset.
     public class Config
     {
+        public int ConfigVersion = CurrentConfigVersion;
         public bool Active;
 
         public TowerPosition TowerPosition = TowerPosition.RangedRight;
         public bool IsGroup1 = true;               // West platform
-        public bool TakenCheckConditionIsTakenTower; // false = role based
-        public bool TakenFarIsEarth = true;
-        public bool TakenFarIsMelee;               // false = wind/far baited by earth/fire ranged
+        public bool TakenCheckConditionIsTakenTower = true;
+        public bool TakenFarIsEarth;               // wind/far baited by the Fire-tower player
+        public bool TakenFarIsMelee = true;
         public bool DontShowElementsP11S1;
 
         public List<PickupOrder> Pickups = new()
         {
-            PickupOrder.Stack_1, PickupOrder.Stack_2, PickupOrder.Stack_3, PickupOrder.Stack_4,
-            PickupOrder.Defamation_1, PickupOrder.Defamation_2, PickupOrder.Defamation_3, PickupOrder.Defamation_4,
+            PickupOrder.Defamation_1, PickupOrder.Stack_1, PickupOrder.Stack_2, PickupOrder.Defamation_2,
+            PickupOrder.Defamation_3, PickupOrder.Stack_3, PickupOrder.Stack_4, PickupOrder.Defamation_4,
         };
 
         public bool AltCloneResolution = true;
-        public List<Dir> AltCloneDirections = new() { Dir.NE, Dir.N };
+        public List<Dir> AltCloneDirections = new() { Dir.W, Dir.SW };
         public bool StackEnumPrioHorizontal;
-        public bool StackEnumVerticalNorth;
-        public bool StackEnumHorizontalWest;
+        public bool StackEnumVerticalNorth = true;
+        public bool StackEnumHorizontalWest = true;
 
         public HashSet<Dir> LP2CardinalStackFirst = new() { Dir.N, Dir.NE, Dir.E, Dir.SE };
         public HashSet<Dir> LP2CardinalDefamationFirst = new() { Dir.N, Dir.NE, Dir.E, Dir.SE };
 
         public bool ShowTetherLine = true;
         public bool ShowTetherCircle = true;
+        public bool ShowGuidePath = true;
+        public bool ShowGuideText = true;
         public bool SkipIndiMechs;
         public int ColorIndex = 4;
 
@@ -75,11 +83,18 @@ public unsafe class IdyllicDream : ISpecialAction
     }
 
     private static bool _enableMigrated;
+    private static bool _configMigrated;
 
     private static Config C => ModuleConfig.Get<Config>();
 
     private static void EnsureEnableMigrated()
     {
+        if (!_configMigrated)
+        {
+            _configMigrated = true;
+            if (C.ConfigVersion < CurrentConfigVersion)
+                ModuleConfig.Set(new Config());
+        }
         if (_enableMigrated) return;
         _enableMigrated = true;
         ModuleConfig.MigrateLegacyActive("Lindblum/Idyllic Dream (Uptime)", C.Active);
@@ -95,6 +110,11 @@ public unsafe class IdyllicDream : ISpecialAction
         [Dir.S] = new(100, 114), [Dir.SW] = new(90, 110), [Dir.W] = new(86, 100), [Dir.NW] = new(90, 90),
     };
 
+    private static readonly int[] ReenactSeqCardinalA = { 0, 2, 4, 6 };
+    private static readonly int[] ReenactSeqIntercardA = { 1, 3, 5, 7 };
+    private static readonly int[] ReenactSeqCardinalB = { 1, 3, 5, 7 };
+    private static readonly int[] ReenactSeqIntercardB = { 0, 2, 4, 6 };
+
     private int _phase;
     private int _phase7Sub;
     private int _phase11Sub;
@@ -105,7 +125,7 @@ public unsafe class IdyllicDream : ISpecialAction
     private bool? _isConeSafeNorth;
     private bool? _nextCleavesNorthSouth;
     private Vector3? _nextAOE;
-    private readonly List<(Vector3 Pos, float Rot)> _nextCleaves = new();
+    private readonly HashSet<(Vector3 Pos, float Rot)> _nextCleaves = new();
     private readonly Dictionary<uint, Vector3> _clonePositions = new(); // player entityId -> clone pos
     private readonly Dictionary<uint, bool> _defamationPlayers = new(); // player entityId -> isDefamation
     private readonly Dictionary<uint, int> _playerOrder = new();        // player entityId -> clockwise idx
@@ -125,8 +145,20 @@ public unsafe class IdyllicDream : ISpecialAction
     private readonly Dictionary<string, StaticVfx> _el = new();
     private bool _built;
 
+    private const string GuideOwner = "m12s_idyllic_guide";
+    private Vector3? _stackFinal;
+    private bool _guideLive;
+    private Vector3? _lastGuideSpot;
+    private string _lastGuideLabel = "";
+    private bool _lastShowText;
+    private bool _lastShowPath;
+
+    public static bool IsRunning { get; private set; }
+
     public override string Name => "Idyllic Dream (Uptime)";
     public override string? ModuleEnableKey => "Lindblum/Idyllic Dream (Uptime)";
+
+    public override bool Registered => false;
 
     public override uint Phase => 2u;
 
@@ -157,6 +189,7 @@ public unsafe class IdyllicDream : ISpecialAction
 
     public override void OnActionCast(ActorCastInfo info)
     {
+        if (info.ActionId == 46345 && _phase == 0) _phase = 1;
         if (info.ActionId == 48098) _phase++;
         if (info.ActionId == 46352 && (_phase == 3 || _phase == 4))
             _isConeSafeNorth = info.Pos.Z < 100f;
@@ -214,21 +247,19 @@ public unsafe class IdyllicDream : ISpecialAction
             _phase11Sub++;
     }
 
-    public override void OnActorControl(uint sourceId, uint command, uint p1, uint p2, uint p3, uint p4)
+    public override void OnActorPlayActionTimelineEvent(IGameObject source, uint id)
     {
-        if (_phase == 1 && _isCardinalFirst == null && command == 407u && p1 == 4562u)
+        if (_phase == 1 && _isCardinalFirst == null && id == 4562u && source != null)
         {
-            IGameObject? x = sourceId.GameObject();
-            if (x == null) return;
-            Vector2 pos = V2(x.Position);
-            if (Vector2.Distance(pos, new Vector2(100, 86)) < 2f) _isCardinalFirst = true;
-            else if (Vector2.Distance(pos, new Vector2(110, 90)) < 2f) _isCardinalFirst = false;
+            Vector2 pos = V2(source.Position);
+            if (Vector2.Distance(pos, new Vector2(100f, 86f)) < 2f) _isCardinalFirst = true;
+            else if (Vector2.Distance(pos, new Vector2(110f, 90f)) < 2f) _isCardinalFirst = false;
         }
     }
 
     public override void OnActorTetherEvent(uint actorId, uint id, ulong targetId)
     {
-        if (id is 367u or 368u or 369u or 374u)
+        if (id is 367u or 368u or 369u or 373u or 374u)
             _cloneTethers[actorId] = (id, (uint)targetId);
     }
 
@@ -240,14 +271,16 @@ public unsafe class IdyllicDream : ISpecialAction
     public override void Update()
     {
         EnsureEnableMigrated();
-        if (C.Preview) { Build(); HideAll(); DrawPreview(); return; }
-        if (!ModuleConfig.IsEnabled(ModuleEnableKey)) { HideAll(); return; }
-        if (_phase <= 0) { HideAll(); return; }
+        if (C.Preview) { IsRunning = false; Build(); HideAll(); ClearGuide(); DrawPreview(); return; }
+        if (!ModuleConfig.IsEnabled(ModuleEnableKey)) { IsRunning = false; HideAll(); ClearGuide(); return; }
+        if (_phase <= 0) { IsRunning = false; HideAll(); ClearGuide(); return; }
+        IsRunning = true;
         Build();
         HideAll();
+        _stackFinal = null;
 
         IPlayerCharacter? me = Svc.Objects.LocalPlayer;
-        if (me == null) return;
+        if (me == null) { ClearGuide(); return; }
 
         if (_captureTowersAt != 0 && Environment.TickCount64 >= _captureTowersAt)
             CaptureTowers();
@@ -260,7 +293,6 @@ public unsafe class IdyllicDream : ISpecialAction
         }
 
         if (_phase is 5 or 6) Phase5(me);
-        if (_phase is 6 or 7 or 8) ShowStoredCleaves(_phase == 6 ? 0.2f : 0.5f);
         if (_phase == 7 && _phase7Sub == 0) Phase7Cone();
         if (_phase == 7 && _phase7Sub == 1) Phase7Tower(me);
         if (_phase == 9 && Adj() < 4) Phase9(me);
@@ -270,8 +302,12 @@ public unsafe class IdyllicDream : ISpecialAction
         if (_phase is 16 or 17) ReenactB();
         if ((_phase == 13 && Adj() < 5) || ((_phase == 16 || _phase == 17) && Adj() < 6)) StackTether();
         if (_phase is 12 or 13 or 14 or 15) SafePlatform();
+
+        if (_phase is 6 or 7 or 8) ShowStoredCleaves(_phase == 6 ? 0.2f : 0.5f);
         if (_phase is 14 or 15 or 16) ShowStoredCleaves(_phase == 14 ? 0.2f : 0.5f);
         if (_phase == 17) PortalCones();
+
+        UpdatePersonalGuide(me);
     }
 
     // phase 1: capture player-clone tethers + positions
@@ -686,8 +722,226 @@ public unsafe class IdyllicDream : ISpecialAction
             }
         }
 
+        _stackFinal = final;
         if (final != null && !C.SkipIndiMechs)
             ShowAt("stack tether", final.Value, Guide);
+    }
+
+    private int MyParty(IPlayerCharacter me)
+    {
+        Dir myDir = _playerOrder.TryGetValue(me.EntityId, out int mo) ? (Dir)mo : Dir.N;
+        uint firstId = FindByOrder(0);
+        bool firstDefa = firstId != 0 && _defamationPlayers.TryGetValue(firstId, out bool fd) && fd;
+        HashSet<Dir> setDirs = firstDefa ? C.LP2CardinalDefamationFirst : C.LP2CardinalStackFirst;
+        return setDirs.Contains(myDir) ? 2 : 1;
+    }
+
+    private int ReenactActiveOrderIndex()
+    {
+        if (!_isCardinalFirst.HasValue) return -1;
+        int adj = Adj();
+        int[] seq = _phase is 13 or 14
+            ? (_isCardinalFirst == true ? ReenactSeqCardinalA : ReenactSeqIntercardA)
+            : (_phase is 16 or 17
+                ? (_isCardinalFirst == true ? ReenactSeqCardinalB : ReenactSeqIntercardB)
+                : Array.Empty<int>());
+        if (_phase is 13 or 14 && adj >= seq.Length) return -1;
+        if (_phase is 16 or 17 && adj >= seq.Length) return -1;
+        return adj < seq.Length ? seq[adj] : -1;
+    }
+
+    private Vector3 DefaSpotFor(IPlayerCharacter me)
+    {
+        if (_el.TryGetValue("Defamation1", out StaticVfx? e1) && e1.Enable && e1.Position != Vector3.Zero)
+            return e1.Position;
+        if (_el.TryGetValue("Defamation2", out StaticVfx? e2) && e2.Enable && e2.Position != Vector3.Zero)
+            return e2.Position;
+        if (_clonePositions.TryGetValue(me.EntityId, out Vector3 clonePos))
+            return DefaGroupPos(clonePos.X < 100f ? 1 : 2);
+        return DefaGroupPos(MyParty(me));
+    }
+
+    private Vector3? TowerGuideSpot(IPlayerCharacter me)
+    {
+        if (_phase == 7 && _phase7Sub == 0 && _isConeSafeNorth.HasValue)
+        {
+            float z = _isConeSafeNorth.Value ? 90f : 110f;
+            float x = C.IsGroup1 ? 90f : 110f;
+            return new Vector3(x, 0f, z);
+        }
+        if (_phase == 7 && _phase7Sub == 1)
+        {
+            Vector3 baseMelee = new(90.243f, 0f, 95.757f);
+            Vector3 baseRanged = new(81.757f, 0f, 95.757f);
+            Vector3 pos = C.TowerPosition switch
+            {
+                TowerPosition.MeleeLeft => baseMelee,
+                TowerPosition.MeleeRight => baseMelee with { Z = 200f - baseMelee.Z },
+                TowerPosition.RangedLeft => baseRanged,
+                TowerPosition.RangedRight => baseRanged with { Z = 200f - baseRanged.Z },
+                _ => baseMelee,
+            };
+            if (!C.IsGroup1) pos = pos with { X = 200f - pos.X, Z = 200f - pos.Z };
+            return pos;
+        }
+        if (_phase is 10 or 11 && _phase11Sub == 0)
+        {
+            IGameObject? tower = GetShouldTakeTower(me);
+            if (tower == null) return null;
+            uint nameId = TowerKind(tower);
+            bool isMelee = C.TowerPosition is TowerPosition.MeleeRight or TowerPosition.MeleeLeft;
+            Vector3 p = tower.Position;
+            if (nameId == (uint)Towers.DoomLight)
+            {
+                if (isMelee) p += new Vector3(0, 0, tower.Position.Z > 100 ? 1.5f : -1.5f);
+                else p += new Vector3(tower.Position.X > 100 ? 1.5f : -1.5f, 0, 0);
+            }
+            else if (nameId == (uint)Towers.WindLight)
+                p += new Vector3(tower.Position.X > 100 ? -1.5f : 1.5f, 0, 0);
+            return p;
+        }
+        if (_phase is 10 or 11 && _phase11Sub == 1 && me.StatusList.Any(s => s.StatusId == 4768))
+            return me.Position;
+        return null;
+    }
+
+    private Vector3? OutsideShareSpot(IPlayerCharacter me)
+    {
+        if (!_clonePositions.TryGetValue(me.EntityId, out Vector3 clonePos)) return null;
+        if (MathF.Abs(clonePos.X - 100f) > 8f) return clonePos;
+        if (_playerOrder.TryGetValue(me.EntityId, out int ord) && (ord == 2 || ord == 6))
+            return clonePos;
+        return null;
+    }
+
+    private void UpdatePersonalGuide(IPlayerCharacter me)
+    {
+        if (C.SkipIndiMechs) { ClearGuide(); return; }
+
+        Vector3? towerSpot = TowerGuideSpot(me);
+        if (towerSpot.HasValue)
+        {
+            string towerLabel = _phase == 7 && _phase7Sub == 0 ? "SAFE" : "TOWER";
+            Vector4 towerColor = _phase == 7 && _phase7Sub == 0 ? SafeColor : Guide;
+            RefreshGuide(towerSpot, towerLabel, towerColor);
+            return;
+        }
+
+        if (_phase is 15 or 16 or 17)
+        {
+            bool shareTime = _phase is 16 or 17 || (_phase == 15 && Adj() >= 5);
+            if (shareTime)
+            {
+                Vector3? shareSpot = OutsideShareSpot(me);
+                if (shareSpot.HasValue)
+                {
+                    string side = shareSpot.Value.X < 100f ? "WEST" : "EAST";
+                    RefreshGuide(shareSpot, side, Guide);
+                    return;
+                }
+            }
+        }
+
+        Vector3? spot = null;
+        string label = "";
+        Vector4 color = StackColor;
+
+        if (_phase == 9 && Adj() < 4 && _defamationPlayers.TryGetValue(me.EntityId, out bool meDefa9))
+        {
+            int party = MyParty(me);
+            int n = Adj();
+            uint g2 = FindByOrder(n);
+            uint g1 = FindByOrder(4 + n);
+            bool defaOnYou = (g2 == me.EntityId && _defamationPlayers.TryGetValue(g2, out bool dg2) && dg2)
+                          || (g1 == me.EntityId && _defamationPlayers.TryGetValue(g1, out bool dg1) && dg1);
+
+            if (defaOnYou) { spot = DefaGroupPos(party); label = "DEFAMATION"; color = DefaColor; }
+            else if (meDefa9) { spot = SafespotPos(party); label = "SAFE"; color = SafeColor; }
+            else { spot = StackGroupPos(party); label = "STACK"; color = StackColor; }
+        }
+        else if ((_phase == 13 && Adj() < 5) || ((_phase is 16 or 17) && Adj() < 6))
+        {
+            int seqIdx = ReenactActiveOrderIndex();
+            if (seqIdx >= 0)
+            {
+                var ordered = EnumCwKv(_clonePositions, new Vector2(100, 100), new Vector2(98, 86));
+                if (seqIdx < ordered.Count && ordered[seqIdx].Key == me.EntityId
+                    && _defamationPlayers.TryGetValue(me.EntityId, out bool meDefaR))
+                {
+                    if (meDefaR) { spot = DefaSpotFor(me); label = "DEFAMATION"; color = DefaColor; }
+                    else { spot = _stackFinal; label = "STACK"; color = StackColor; }
+                }
+            }
+        }
+
+        if (label.Length == 0) { ClearGuide(); return; }
+        RefreshGuide(spot, label, color);
+    }
+
+    private void RefreshGuide(Vector3? spot, string label, Vector4 color)
+    {
+        if (Plugin.Instance == null) return;
+
+        bool showText = C.ShowGuideText;
+        bool showPath = C.ShowGuidePath && spot.HasValue;
+        bool spotSame = _lastGuideSpot.HasValue == spot.HasValue
+            && (!spot.HasValue || Vector3.Distance(_lastGuideSpot!.Value, spot!.Value) < 0.05f);
+        if (_guideLive && spotSame && _lastGuideLabel == label
+            && _lastShowText == showText && _lastShowPath == showPath)
+            return;
+
+        _guideLive = true;
+        _lastGuideSpot = spot;
+        _lastGuideLabel = label;
+        _lastShowText = showText;
+        _lastShowPath = showPath;
+
+        var e = new LogEvent { Name = "idyllic_guide" };
+        Plugin.Instance.Engine.ClearExternal(GuideOwner);
+
+        if (showText)
+        {
+            Plugin.Instance.Engine.SpawnExternal(GuideOwner, new DrawSpec
+            {
+                Shape = QuickShape.Text,
+                Anchor = DrawAnchor.Self,
+                AttachToActor = true,
+                Color = color,
+                Duration = 600f,
+                Label = label,
+                LabelColor = color,
+                LabelSize = 1.2f,
+                LabelHeight = 2f,
+            }, e, previewSelf: true);
+        }
+
+        if (showPath)
+        {
+            Plugin.Instance.Engine.SpawnExternal(GuideOwner, new DrawSpec
+            {
+                Shape = QuickShape.ChevronPath,
+                Anchor = DrawAnchor.Self,
+                AttachToActor = true,
+                Link = LinkTarget.FixedSpot,
+                LinkPosition = spot!.Value,
+                Color = color,
+                ChevronSpacing = 2f,
+                LineThickness = 4f,
+                Length = 30f,
+                Duration = 600f,
+            }, e, previewSelf: true);
+        }
+    }
+
+    private void ClearGuide()
+    {
+        if (!_guideLive) return;
+        _guideLive = false;
+        _lastGuideSpot = null;
+        _lastGuideLabel = "";
+        _lastShowText = false;
+        _lastShowPath = false;
+        Plugin.Instance?.Engine.ClearExternal(GuideOwner);
     }
 
     // safe platform (phases 12-15)
@@ -961,9 +1215,12 @@ public unsafe class IdyllicDream : ISpecialAction
 
     public override void Reset()
     {
+        IsRunning = false;
+        ClearGuide();
         base.Reset();
         _el.Clear();
         _built = false;
+        _stackFinal = null;
         _phase = 0;
         _phase7Sub = 0;
         _phase11Sub = 0;
@@ -1072,6 +1329,10 @@ public unsafe class IdyllicDream : ISpecialAction
         if (ImGui.Checkbox("Tether-pickup as line", ref line)) { C.ShowTetherLine = line; ModuleConfig.Save<Config>(); }
         bool circle = C.ShowTetherCircle;
         if (ImGui.Checkbox("Mark the clone to grab from", ref circle)) { C.ShowTetherCircle = circle; ModuleConfig.Save<Config>(); }
+        bool gpath = C.ShowGuidePath;
+        if (ImGui.Checkbox("Path to my defamation/stack spot", ref gpath)) { C.ShowGuidePath = gpath; ModuleConfig.Save<Config>(); }
+        bool gtext = C.ShowGuideText;
+        if (ImGui.Checkbox("Callout text over me (DEFAMATION / STACK)", ref gtext)) { C.ShowGuideText = gtext; ModuleConfig.Save<Config>(); }
         bool noTowers = C.DontShowElementsP11S1;
         if (ImGui.Checkbox("Don't visualise tower debuffs (cones/tethers)", ref noTowers)) { C.DontShowElementsP11S1 = noTowers; ModuleConfig.Save<Config>(); }
         StratUI.Hint("Hides the wind/doom tower cone + tether resolution (phase 11). Other AoEs still show.");

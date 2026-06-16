@@ -16,14 +16,14 @@ public static class GameLibrary
         if (_all != null) return;
         var list = new List<Entry>(8192);
 
-        foreach (var a in Plugin.DataManager.GetExcelSheet<LuminaAction>())
+        foreach (var a in Plugin.Actions)
         {
             var name = a.Name.ExtractText();
             if (string.IsNullOrWhiteSpace(name)) continue;
             list.Add(new Entry(a.RowId, name, a.Icon, false));
         }
 
-        foreach (var s in Plugin.DataManager.GetExcelSheet<LuminaStatus>())
+        foreach (var s in Plugin.Statuses)
         {
             var name = s.Name.ExtractText();
             if (string.IsNullOrWhiteSpace(name)) continue;

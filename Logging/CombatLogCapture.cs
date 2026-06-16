@@ -25,6 +25,23 @@ public sealed class CombatLogCapture : IDisposable
     private readonly Configuration _config;
     private readonly IPluginLog    _log;
 
+    private static bool HasCjk(string s)
+    {
+        foreach (var ch in s)
+        {
+            if (ch is >= '\u1100' and <= '\u11FF'   // Hangul Jamo
+                   or >= '\u3000' and <= '\u9FFF'   // CJK punctuation, kana, ideographs
+                   or >= '\uAC00' and <= '\uD7AF'   // Hangul syllables
+                   or >= '\uF900' and <= '\uFAFF'   // CJK compatibility
+                   or >= '\uFF00' and <= '\uFFEF')  // fullwidth forms
+                return true;
+        }
+        return false;
+    }
+
+    private static string CleanName(string? name, uint id)
+        => string.IsNullOrEmpty(name) || HasCjk(name) ? $"#{id}" : name;
+
     private readonly Dictionary<uint, ActorState> _actors = new();
     private readonly HashSet<uint> _eventObjs       = new();
     private readonly HashSet<uint> _eventObjScratch = new();
@@ -942,7 +959,7 @@ public sealed class CombatLogCapture : IDisposable
         // Cast bar emptied (resolved or interrupted) — the snapshot moment.
         if (prev != 0)
         {
-            var done = Plugin.DataManager.GetExcelSheet<LuminaAction>().GetRowOrDefault(prev);
+            var done = Plugin.Actions.GetRowOrDefault(prev);
             var dpos = bc.Position;
             Emit(new LogEvent
             {
@@ -950,7 +967,7 @@ public sealed class CombatLogCapture : IDisposable
                 SourceName = bc.Name.TextValue,
                 SourceId   = bc.EntityId,
                 SourceKind = kind,
-                Name       = done?.Name.ExtractText() is { Length: > 0 } dn ? dn : $"#{prev}",
+                Name       = CleanName(done?.Name.ExtractText(), prev),
                 DataId     = prev,
                 IconId     = done?.Icon ?? 0,
                 X          = dpos.X,
@@ -965,7 +982,7 @@ public sealed class CombatLogCapture : IDisposable
         // the actors that hook skips (you / party / allies) so we don't double-log.
         if (CastHookInstalled && kind == ActorKind.Enemy) return;
 
-        var action = Plugin.DataManager.GetExcelSheet<LuminaAction>().GetRowOrDefault(cur);
+        var action = Plugin.Actions.GetRowOrDefault(cur);
         var targetName = "";
         if (bc.CastTargetObjectId != 0 &&
             Plugin.ObjectTable.SearchById((uint)bc.CastTargetObjectId) is { } tgt)
@@ -980,7 +997,7 @@ public sealed class CombatLogCapture : IDisposable
             SourceKind = kind,
             TargetName = targetName,
             TargetId   = (uint)bc.CastTargetObjectId,
-            Name       = action?.Name.ExtractText() is { Length: > 0 } n ? n : $"#{cur}",
+            Name       = CleanName(action?.Name.ExtractText(), cur),
             DataId     = cur,
             IconId     = action?.Icon ?? 0,
             Value      = bc.TotalCastTime,
@@ -1004,7 +1021,7 @@ public sealed class CombatLogCapture : IDisposable
 
             float heading = ((Character*)bc.Address)->CastRotation;
 
-            var action = Plugin.DataManager.GetExcelSheet<LuminaAction>().GetRowOrDefault(data->ActionId);
+            var action = Plugin.Actions.GetRowOrDefault(data->ActionId);
             var targetName = "";
             if (data->TargetId != 0 && Plugin.ObjectTable.SearchById(data->TargetId) is { } tgt)
                 targetName = tgt.Name.TextValue;
@@ -1017,7 +1034,7 @@ public sealed class CombatLogCapture : IDisposable
                 SourceKind = ActorKind.Enemy,
                 TargetName = targetName,
                 TargetId   = data->TargetId,
-                Name       = action?.Name.ExtractText() is { Length: > 0 } n ? n : $"#{data->ActionId}",
+                Name       = CleanName(action?.Name.ExtractText(), data->ActionId),
                 DataId     = data->ActionId,
                 IconId     = action?.Icon ?? 0,
                 Value      = data->CastTime + 0.3f,
@@ -1052,7 +1069,7 @@ public sealed class CombatLogCapture : IDisposable
 
     private void EmitStatus(LogKind kind, IBattleChara target, ActorKind targetKind, (uint id, uint src) s)
     {
-        var status = Plugin.DataManager.GetExcelSheet<LuminaStatus>().GetRowOrDefault(s.id);
+        var status = Plugin.Statuses.GetRowOrDefault(s.id);
         var srcName = s.src != 0 && Plugin.ObjectTable.SearchById(s.src) is { } src ? src.Name.TextValue : "";
         float remaining = 0f;
         uint  param     = 0;
@@ -1071,7 +1088,7 @@ public sealed class CombatLogCapture : IDisposable
             TargetName = target.Name.TextValue,
             TargetId   = target.EntityId,
             TargetKind = targetKind,
-            Name       = status?.Name.ExtractText() is { Length: > 0 } n ? n : $"#{s.id}",
+            Name       = CleanName(status?.Name.ExtractText(), s.id),
             DataId     = s.id,
             IconId     = status?.Icon ?? 0,
             Value      = remaining,
@@ -1192,11 +1209,10 @@ public sealed class CombatLogCapture : IDisposable
             var kind = Classify(bc);
             if (kind == ActorKind.Other) return;
 
-            var action = Plugin.DataManager.GetExcelSheet<LuminaAction>().GetRowOrDefault(actionId);
+            var action = Plugin.Actions.GetRowOrDefault(actionId);
             if (action is not { } a) return;
             if (a.ActionCategory.RowId == 1) return;
-            var name = a.Name.ExtractText();
-            if (string.IsNullOrEmpty(name)) name = $"#{actionId}";
+            var name = CleanName(a.Name.ExtractText(), actionId);
 
             var targetCount = Math.Min((int)header->NumTargets, 32);
             var abilityTargetIds = new uint[targetCount];

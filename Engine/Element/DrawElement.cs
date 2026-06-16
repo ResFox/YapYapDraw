@@ -76,4 +76,8 @@ public class DrawElement
     public WatchCheck? WatchCheck { get; set; }
 
     public Func<Vector3>? PositionCustomAction { get; set; }
+
+    public Func<Vector3>? TargetPositionCustomAction { get; set; }
+
+    public Func<Angle>? RotationCustomAction { get; set; }
 }

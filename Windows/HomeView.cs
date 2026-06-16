@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
@@ -12,12 +11,10 @@ namespace YapYapDraw.Windows;
 public sealed class HomeView
 {
     private readonly Plugin _plugin;
-    private static readonly string Version =
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
 
     private const string GithubUrl  = "https://github.com/ResFox/YapYapDraw";
     private const string DiscordUrl = "https://discord.gg/KZBxpkqbh4";
-    private const string KofiUrl    = "https://ko-fi.com";
+    private const string KofiUrl    = "https://ko-fi.com/yapyapdraw";
 
     public HomeView(Plugin plugin) => _plugin = plugin;
 
@@ -48,6 +45,10 @@ public sealed class HomeView
         ImGui.Dummy(new Vector2(0, 6f * ImGuiHelpers.GlobalScale));
         CenterText("YapYap Draw", 1.9f, Ui.Blue, w);
         CenterText("Draw your mechanics on the arena floor.", 1f, Ui.Dimmed, w);
+
+        string vline = $"v{Changelog.Version}  -  What's new";
+        Center(ImGui.CalcTextSize(vline).X, w);
+        if (ClickableDimmed(vline)) _plugin.OpenChangelog();
 
         ImGui.Dummy(new Vector2(0, 12f * ImGuiHelpers.GlobalScale));
         ImGui.Dummy(new Vector2(0, 4f * ImGuiHelpers.GlobalScale));
@@ -188,6 +189,16 @@ public sealed class HomeView
         draw.AddRectFilledMultiColor(new Vector2(p.X + half, y), new Vector2(p.X + lineW, y + thick),
             cMid, cEdge, cEdge, cMid);
         ImGui.Dummy(new Vector2(lineW, thick));
+    }
+
+    private static bool ClickableDimmed(string text)
+    {
+        var p = ImGui.GetCursorScreenPos();
+        var size = ImGui.CalcTextSize(text);
+        bool hover = ImGui.IsMouseHoveringRect(p, p + size);
+        ImGui.TextColored(hover ? Ui.Blue : Ui.Dimmed, text);
+        if (hover) ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        return hover && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
     }
 
     private static void Center(float itemWidth, float avail)

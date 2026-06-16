@@ -18,7 +18,7 @@ public sealed class MainWindow : Window, IDisposable
     private string? _pendingTab;
 
     public MainWindow(Plugin plugin, LogWindow log, ConfigWindow config)
-        : base("YapYap Draw###YapYapDrawMain")
+        : base($"YapYap Draw v{Changelog.Version}###YapYapDrawMain")
     {
         _home       = new HomeView(plugin);
         _log        = log;

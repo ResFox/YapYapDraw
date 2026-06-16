@@ -43,6 +43,21 @@ public enum NumField : byte
     Param2,
     Param3,
     Param4,
+    DistSourceToTarget,
+    DistMeToSource,
+    DistMeToTarget,
+}
+
+public enum StatusGateWho : byte { Self, Source, Target }
+
+public sealed class StatusGate
+{
+    public StatusGateWho Who      { get; set; } = StatusGateWho.Self;
+    public bool          Have     { get; set; } = true;
+    public uint          StatusId { get; set; }
+    public string        Name     { get; set; } = "";
+
+    public StatusGate Clone() => (StatusGate)MemberwiseClone();
 }
 
 public enum NumOp : byte { Eq, Ne, Lt, Le, Gt, Ge }
@@ -127,7 +142,7 @@ public sealed class FollowCond
     public FollowCond Clone() => (FollowCond)MemberwiseClone();
 }
 
-public enum QuickShape : byte { Circle, Donut, Fan, Rectangle, Line, Tower, Knockback, Laser }
+public enum QuickShape : byte { Circle, Donut, Fan, Rectangle, Line, Tower, Knockback, Laser, Text, Arrow, ChevronPath }
 
 // Where the shape is anchored when it fires.
 public enum DrawAnchor : byte
@@ -137,6 +152,18 @@ public enum DrawAnchor : byte
     Self,          // the local player
     FixedPosition, // a typed-in arena coordinate
     EventPosition, // the position carried by the event (cast/effect origin)
+    TetheredToMe,  // the live actor currently tethered to the local player
+    WaymarkA,      // field markers, in game order A-D then 1-4
+    WaymarkB,
+    WaymarkC,
+    WaymarkD,
+    Waymark1,
+    Waymark2,
+    Waymark3,
+    Waymark4,
+    ArenaCenter,   // the arena centre (100, 100 convention)
+    LinkedShape,
+    NearbyActorById,
 }
 
 // The far end of a Line, or who a shape re-targets to.
@@ -149,6 +176,17 @@ public enum LinkTarget : byte
     NearestEnemy,         // closest enemy to the anchor
     PlayerWithSameStatus, // another party member carrying the same debuff
     FixedSpot,            // a typed-in / clicked arena coordinate
+    TetheredToMe,         // the live actor currently tethered to the local player
+    WaymarkA,
+    WaymarkB,
+    WaymarkC,
+    WaymarkD,
+    Waymark1,
+    Waymark2,
+    Waymark3,
+    Waymark4,
+    ArenaCenter,
+    LinkedShape,
 }
 
 // An optional stock-game look that overrides the smooth telegraph. Plain keeps
@@ -167,15 +205,23 @@ public enum VfxStyle : byte
 // The drawn-shape parameters. Lives on both the trigger and its follow-up steps.
 public sealed class DrawSpec
 {
+    public string     Id            { get; set; } = Guid.NewGuid().ToString("N");
+    public string     AnchorShapeId { get; set; } = "";
+    public string     LinkShapeId   { get; set; } = "";
+    public uint       AnchorActorBaseId { get; set; }
+
     public QuickShape Shape       { get; set; } = QuickShape.Circle;
-    public Vector4    Color       { get; set; } = new(1f, 0.55f, 0.10f, 0.45f);
+    public Vector4    Color       { get; set; } = new(1f, 0.55f, 0.10f, 1f);
 
     public float Radius      { get; set; } = 6f;    // circle radius / fan length / donut outer
     public float InnerRadius { get; set; } = 8f;    // donut inner
-    public float HalfWidth   { get; set; } = 4f;    // rectangle / line half-width
-    public float Length      { get; set; } = 20f;   // rectangle length (front)
+    public float HalfWidth   { get; set; } = 4f;    // rectangle / line half-width / arrowhead size
+    public float Length      { get; set; } = 20f;   // rectangle length (front) / arrow length
     public int   FanAngle    { get; set; } = 90;    // fan full angle, degrees
     public float Rotation    { get; set; }          // facing, degrees (world, or offset-from-facing)
+
+    public float ChevronSpacing { get; set; } = 2f;  // chevron path: a V every N yalms
+    public float LineThickness  { get; set; } = 4f;  // arrow / chevron stroke width, pixels
 
     // When on (and stuck to an actor) the shape spins with that actor's heading,
     // and Rotation becomes an offset from "straight ahead".
@@ -193,11 +239,33 @@ public sealed class DrawSpec
     public LinkTarget Link        { get; set; } = LinkTarget.EventTarget;
     public Vector3    LinkPosition { get; set; } = new(100f, 0f, 100f);
 
+    // Rectangle only: stretch from the anchor to the far end (Link) like a wide line,
+    // instead of a fixed length in a set facing.
+    public bool SpanToTarget { get; set; }
+
+    // For TetheredToMe anchor/link: 0 = any tether, else only match this tether id.
+    public uint TetherFilterId { get; set; }
+
     public VfxStyle Style     { get; set; } = VfxStyle.Plain;
     public string   CustomVfx { get; set; } = "";
 
     public float Duration         { get; set; } = 5f; // seconds
     public bool  UseEventDuration { get; set; }        // match cast / debuff time
+
+    // Spawn the shape this many times, each rotated a further RepeatStep degrees
+    // around the anchor (also sweeps the offset), e.g. 8 fans around the boss.
+    public int   Repeat     { get; set; } = 1;
+    public float RepeatStep { get; set; } = 45f;
+
+    // Hold off this many seconds before this shape appears (lets a multi-shape
+    // draw play out as a timed sequence).
+    public float StartDelay { get; set; }
+
+    // Optional text drawn at the shape's centre (callout word, number, letter).
+    public string  Label       { get; set; } = "";
+    public Vector4 LabelColor  { get; set; } = new(1f, 1f, 1f, 1f);
+    public float   LabelSize   { get; set; } = 1f;   // text scale multiplier
+    public float   LabelHeight { get; set; } = 2f;   // yalms up off the floor
 
     public void NormalizeLegacy()
     {
@@ -221,6 +289,11 @@ public sealed class DrawSpec
         Style = VfxStyle.Plain;
     }
 
+    public void EnsureId()
+    {
+        if (string.IsNullOrEmpty(Id)) Id = Guid.NewGuid().ToString("N");
+    }
+
     public DrawSpec Clone() => (DrawSpec)MemberwiseClone();
 }
 
@@ -241,6 +314,9 @@ public sealed class FollowUpStep
     public bool     DrawEnabled { get; set; } = true;
     public DrawSpec Draw        { get; set; } = new();
 
+    // Additional shapes drawn together with Draw when this step fires.
+    public List<DrawSpec> ExtraShapes { get; set; } = new();
+
     public bool IsConditional => On != FollowUpOn.Timer;
 
     public void EnsureConditions()
@@ -260,6 +336,7 @@ public sealed class FollowUpStep
         var c = (FollowUpStep)MemberwiseClone();
         c.Conditions = Conditions.ConvertAll(x => x.Clone());
         c.Draw       = Draw.Clone();
+        c.ExtraShapes = ExtraShapes.ConvertAll(x => x.Clone());
         return c;
     }
 }
@@ -286,9 +363,10 @@ public sealed class QuickDrawDef
     public string     SourceName { get; set; } = "";
     public string     TargetName { get; set; } = "";
 
-    public List<NumCond>   NumConds { get; set; } = new();
-    public List<VarCond>   VarConds { get; set; } = new();
-    public List<VarAction> SetVars  { get; set; } = new();
+    public List<NumCond>    NumConds    { get; set; } = new();
+    public List<VarCond>    VarConds    { get; set; } = new();
+    public List<VarAction>  SetVars     { get; set; } = new();
+    public List<StatusGate> StatusGates { get; set; } = new();
 
     public float       Cooldown    { get; set; }
     public bool        NoReentry   { get; set; }
@@ -305,6 +383,9 @@ public sealed class QuickDrawDef
     public bool     DrawEnabled { get; set; } = true;
     public DrawSpec Draw        { get; set; } = new();
 
+    // Additional shapes drawn together with Draw on the same trigger.
+    public List<DrawSpec> ExtraShapes { get; set; } = new();
+
     public List<FollowUpStep> FollowUps { get; set; } = new();
 
     public QuickDrawDef Clone()
@@ -312,11 +393,13 @@ public sealed class QuickDrawDef
         var c = (QuickDrawDef)MemberwiseClone();
         c.FollowUps = FollowUps.ConvertAll(s => s.Clone());
         c.Zones     = new List<uint>(Zones);
-        c.NumConds  = NumConds.ConvertAll(x => x.Clone());
-        c.VarConds  = VarConds.ConvertAll(x => x.Clone());
-        c.SetVars   = SetVars.ConvertAll(x => x.Clone());
+        c.NumConds     = NumConds.ConvertAll(x => x.Clone());
+        c.VarConds     = VarConds.ConvertAll(x => x.Clone());
+        c.SetVars      = SetVars.ConvertAll(x => x.Clone());
+        c.StatusGates  = StatusGates.ConvertAll(x => x.Clone());
         c.ClearOn   = ClearOn.Clone();
         c.Draw      = Draw.Clone();
+        c.ExtraShapes = ExtraShapes.ConvertAll(x => x.Clone());
         return c;
     }
 }

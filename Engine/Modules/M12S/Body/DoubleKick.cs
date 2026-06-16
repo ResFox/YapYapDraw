@@ -22,9 +22,27 @@ public class DoubleKick : ISpecialAction
     {
         if (info.ActionId == 46368)
         {
-            SimpleElement.Fan(info.SourceId, 60f, 180, info.SourceId.GameObject().Rotation.Radians(), 3000f, 0f, 0u);
+            IGameObject? boss = info.SourceId.GameObject();
+            if (boss == null)
+            {
+                return;
+            }
+
+            DrawManager.Draw(new DrawElement
+            {
+                drawAvfx = "customFan",
+                refRadian = 180f.Degrees().Rad,
+                radiusX = 60f,
+                radiusZ = 60f,
+                drawOnObject = true,
+                alwaysFaceCurrentTarget = true,
+                refColor = GroundOmen.Red,
+                refTargetColor = GroundOmen.Red,
+                destroyTime = info.CastTime * 1000f,
+            }, boss);
             return;
         }
+
         SimpleElement.Fan(info, 180);
         DrawElement element = new DrawElement
         {
@@ -36,9 +54,9 @@ public class DoubleKick : ISpecialAction
                 ActionID = new HashSet<uint> { 46374u }
             }
         };
-        foreach (IGameObject tank in PlayerHelper.Tank)
+        foreach (IGameObject t in PlayerHelper.Tank)
         {
-            DrawManager.Draw(element, tank);
+            DrawManager.Draw(element, t);
         }
     }
 }

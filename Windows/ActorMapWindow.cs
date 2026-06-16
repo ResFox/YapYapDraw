@@ -1452,7 +1452,7 @@ public sealed class ActorMapWindow : Window, IDisposable
     private static string ActionName(uint id)
     {
         if (id == 0) return "";
-        var a = Plugin.DataManager.GetExcelSheet<LuminaAction>().GetRowOrDefault(id);
+        var a = Plugin.Actions.GetRowOrDefault(id);
         var n = a?.Name.ExtractText();
         return string.IsNullOrEmpty(n) ? $"#{id}" : n;
     }

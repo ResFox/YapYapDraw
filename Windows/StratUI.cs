@@ -83,6 +83,41 @@ public static class StratUI
         return changed;
     }
 
+    // Like SegmentedBar but wraps to the next row when it runs out of width, so a long
+    // list of options stays compact instead of one long horizontal strip.
+    public static bool SegmentedBarWrapped(string[] options, ref int selected)
+    {
+        bool changed = false;
+        var style = ImGui.GetStyle();
+        float maxX = ImGui.GetWindowPos().X + ImGui.GetWindowContentRegionMax().X;
+
+        for (int i = 0; i < options.Length; i++)
+        {
+            bool sel = selected == i;
+            if (sel)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button, Ui.Accent);
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Ui.Accent with { W = 0.9f });
+                ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.08f, 0.06f, 0.05f, 1f));
+            }
+            if (ImGui.Button(options[i]))
+            {
+                if (selected != i) changed = true;
+                selected = i;
+            }
+            if (sel) ImGui.PopStyleColor(3);
+
+            if (i < options.Length - 1)
+            {
+                float lastX  = ImGui.GetItemRectMax().X;
+                float nextW  = ImGui.CalcTextSize(options[i + 1]).X + style.FramePadding.X * 2f;
+                if (lastX + style.ItemSpacing.X + nextW < maxX)
+                    ImGui.SameLine();
+            }
+        }
+        return changed;
+    }
+
     public static bool RoleGrid(string[] roles, ref int selected, int columns = 2)
     {
         bool changed = false;

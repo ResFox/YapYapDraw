@@ -217,7 +217,9 @@ public class DrawManager
         vfx.AlwaysFaceCurrentTarget = element.alwaysFaceCurrentTarget;
         vfx.AlwaysDrawOnCurrentTarget = element.alwaysDrawOnCurrentTarget;
         vfx.OnlyVisible = element.OnlyVisible;
-        vfx.PositionCustomAction = element.PositionCustomAction;
+        vfx.PositionCustomAction       = element.PositionCustomAction;
+        vfx.TargetPositionCustomAction = element.TargetPositionCustomAction;
+        vfx.RotationCustomAction       = element.RotationCustomAction;
         vfx.HitCounter = element.hitCounter;
         vfx.DistanceCheck = element.distanceCheck;
         vfx.TetherCheck = element.TetherCheck;

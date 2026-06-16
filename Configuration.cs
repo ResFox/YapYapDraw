@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Configuration;
 using YapYapDraw.QuickDraws;
+using YapYapDraw.Strats;
 
 namespace YapYapDraw;
 
@@ -91,8 +92,16 @@ public sealed class Configuration : IPluginConfiguration
     public bool MapShowObjects  { get; set; }
     public bool MapHideUnnamed  { get; set; } = true;
 
+    public bool StratsEnabled { get; set; } = true;
+    public StratRole MyRole { get; set; } = StratRole.MT;
+    public List<StratPack> StratPacks { get; set; } = new();
+
+    // fightKey -> chosen strat id
+    public Dictionary<string, string> SelectedStrat { get; set; } = new();
+
     public bool LogWindowOpen { get; set; } = true;
     public bool FirstRun    { get; set; } = true;
+    public string LastSeenVersion { get; set; } = "";
     public bool DebugHud    { get; set; }
     public bool OpenOnLogin { get; set; }
 

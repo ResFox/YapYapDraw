@@ -52,6 +52,9 @@ public sealed class LogWindow : Window, IDisposable
     private static readonly Vector4 ColMap    = new(0.45f, 0.90f, 0.80f, 1f);
     private static readonly Vector4 ColCtrl   = new(0.70f, 0.70f, 0.78f, 1f);
     private static readonly Vector4 ColNote   = new(1f, 0.85f, 0.40f, 1f);
+    private static readonly Vector4 ColSize   = new(0.55f, 0.85f, 0.75f, 1f);
+
+    private readonly Dictionary<uint, ActionShape.Info?> _shapeCache = new();
 
     public LogWindow(Plugin plugin)
         : base("YapYap Fight Log###YapYapLog")
@@ -402,14 +405,16 @@ public sealed class LogWindow : Window, IDisposable
         _prevFilteredCount = _filtered.Count;
 
         if (!ImGui.BeginTable("##log", 5,
-                ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.BordersInnerH))
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.BordersInnerH
+                | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.Resizable
+                | ImGuiTableFlags.Reorderable | ImGuiTableFlags.Hideable))
             return;
 
         ImGui.TableSetupScrollFreeze(0, 1);
         ImGui.TableSetupColumn("Time",   ImGuiTableColumnFlags.WidthFixed, 58f * ImGuiHelpers.GlobalScale);
-        ImGui.TableSetupColumn("Source", ImGuiTableColumnFlags.WidthFixed, 140f * ImGuiHelpers.GlobalScale);
-        ImGui.TableSetupColumn("Event",  ImGuiTableColumnFlags.WidthFixed, 70f * ImGuiHelpers.GlobalScale);
-        ImGui.TableSetupColumn("Target", ImGuiTableColumnFlags.WidthFixed, 140f * ImGuiHelpers.GlobalScale);
+        ImGui.TableSetupColumn("Source", ImGuiTableColumnFlags.WidthFixed, 150f * ImGuiHelpers.GlobalScale);
+        ImGui.TableSetupColumn("Event",  ImGuiTableColumnFlags.WidthFixed, 66f * ImGuiHelpers.GlobalScale);
+        ImGui.TableSetupColumn("Target", ImGuiTableColumnFlags.WidthFixed, 150f * ImGuiHelpers.GlobalScale);
         ImGui.TableSetupColumn("Detail", ImGuiTableColumnFlags.WidthStretch);
         ImGui.TableHeadersRow();
 
@@ -638,6 +643,7 @@ public sealed class LogWindow : Window, IDisposable
                     ImGui.SameLine();
                     ImGui.TextDisabled($"→ {e.TargetName}");
                 }
+                DrawShapeSize(e);
                 break;
             case LogKind.StatusGain:
             case LogKind.StatusLose:
@@ -721,6 +727,22 @@ public sealed class LogWindow : Window, IDisposable
                 }
                 break;
         }
+    }
+
+    private void DrawShapeSize(LogEvent e)
+    {
+        if (e.DataId == 0) return;
+        if (!_shapeCache.TryGetValue(e.DataId, out var info))
+        {
+            info = ActionShape.Describe(e.DataId);
+            _shapeCache[e.DataId] = info;
+        }
+        if (info == null) return;
+
+        ImGui.SameLine();
+        ImGui.TextColored(ColSize, info.Value.Label);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"AOE shape / size (from the Action sheet)\n{info.Value.Call}");
     }
 
     private void DrawId(LogEvent e)
@@ -876,12 +898,14 @@ public sealed class LogWindow : Window, IDisposable
         string id  = e.DataId != 0 ? $"[{e.DataId:X} / {e.DataId}]" : "";
         string src = e.SourceId != 0 ? $"{e.SourceName}(0x{e.SourceId:X8})" : e.SourceName;
         string tgt = e.TargetId != 0 ? $"{e.TargetName}(0x{e.TargetId:X8})" : e.TargetName;
+        var    sz  = ActionShape.Describe(e.DataId);
+        string size = sz != null ? $"  {sz.Value.Label}" : "";
 
         return e.Kind switch
         {
-            LogKind.CastStart    => $"startcast {src} -> {tgt} : {e.Name} {id} ({e.Value:0.0}s)",
-            LogKind.CastFinish   => $"endcast   {src} -> {tgt} : {e.Name} {id}",
-            LogKind.Ability      => $"use     {src} -> {tgt} : {e.Name} {id}",
+            LogKind.CastStart    => $"startcast {src} -> {tgt} : {e.Name} {id} ({e.Value:0.0}s){size}",
+            LogKind.CastFinish   => $"endcast   {src} -> {tgt} : {e.Name} {id}{size}",
+            LogKind.Ability      => $"use     {src} -> {tgt} : {e.Name} {id}{size}",
             LogKind.StatusGain   => $"gain    {e.Name} {id} on {tgt} ({e.Value:0.0}s)",
             LogKind.StatusLose   => $"lose    {e.Name} {id} on {tgt}",
             LogKind.Death        => $"death   {src}",

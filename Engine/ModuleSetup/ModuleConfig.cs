@@ -63,6 +63,14 @@ public static class ModuleConfig
         return value;
     }
 
+    public static void Set<T>(T value) where T : class, new()
+    {
+        string key = typeof(T).FullName!;
+        Cache[key] = value;
+        Plugin.Config.ModuleConfigs[key] = JsonSerializer.Serialize(value, JsonOpts);
+        Plugin.Config.Save();
+    }
+
     public static void Save<T>() where T : class, new()
     {
         string key = typeof(T).FullName!;

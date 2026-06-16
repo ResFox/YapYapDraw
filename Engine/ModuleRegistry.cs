@@ -50,6 +50,7 @@ public static class ModuleRegistry
                     })
                     .Where(m => m != null)
                     .Cast<ISpecialAction>()
+                    .Where(m => m.Registered)
                     .ToList();
 
                 foreach (var m in mechanics)

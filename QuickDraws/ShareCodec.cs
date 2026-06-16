@@ -10,6 +10,7 @@ public static class ShareCodec
 {
     public const string ModulePrefix = "YAPDRAWPACK1:";
     public const string DrawPrefix   = "YAPDRAW1:";
+    public const string StratPrefix  = "YAPSTRAT1:";
 
     private static readonly JsonSerializerOptions Opts = new()
     {

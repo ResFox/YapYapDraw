@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 
 namespace YapYapDraw.Windows;
 
@@ -11,6 +12,18 @@ public static class Ui
     public static readonly Vector4 Dimmed = new(0.58f, 0.56f, 0.55f, 1f);
     public static readonly Vector4 Green  = new(0.36f, 0.82f, 0.45f, 1f);
     public static readonly Vector4 Red    = new(0.96f, 0.42f, 0.42f, 1f);
+    public static readonly Vector4 White  = new(0.95f, 0.95f, 0.96f, 1f);
+
+    public static void SectionHeader(FontAwesomeIcon icon, string text)
+    {
+        ImGui.AlignTextToFramePadding();
+        ImGui.PushFont(UiBuilder.IconFont);
+        ImGui.TextColored(Accent, icon.ToIconString());
+        ImGui.PopFont();
+        ImGui.SameLine(0, 7f);
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextColored(White, text);
+    }
 
     private const int ThemeColors = 29;
     private const int ThemeVars   = 9;

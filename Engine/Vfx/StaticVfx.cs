@@ -77,7 +77,13 @@ public class StaticVfx : BaseVfx
 
     public bool OnlyVisible { get; set; }
 
+    public Vector3 LastPosition { get; private set; }
+
     public Func<Vector3>? PositionCustomAction { get; set; }
+
+    public Func<Vector3>? TargetPositionCustomAction { get; set; }
+
+    public Func<Angle>? RotationCustomAction { get; set; }
 
     public HitCounter? HitCounter { get; set; }
 
@@ -277,25 +283,39 @@ public class StaticVfx : BaseVfx
         }
     }
 
+    private Vector3 EffectiveTargetPosition()
+    {
+        if (TargetPositionCustomAction != null)
+            return TargetPositionCustomAction();
+        if (TargetPosition.X != float.MinValue)
+            return TargetPosition;
+        return Target?.RenderPosition() ?? Vector3.Zero;
+    }
+
     private void ApplyPosition()
     {
         if (Owner != null)
         {
             if (Target == null || Svc.Objects.SearchById(Target.GameObjectId) != null)
             {
-                Angle angle = (FixRotation ? Rotation : (Owner.Rotation.Radians() + Rotation));
+                IGameObject ownerObj = Svc.Objects.FirstOrDefault((IGameObject o) => o.Address == (IntPtr)_ownerAddress);
+                if (ownerObj == null) return;
+                Vector3 ownerPos = ownerObj.RenderPosition();
+                Angle angle = (FixRotation ? Rotation : (ownerObj.Rotation.Radians() + Rotation));
                 if (Target != null)
                 {
-                    Vector3 vector = Target.Position - Owner.Position;
+                    Vector3 vector = Target.RenderPosition() - ownerPos;
                     angle = MathF.Atan2(vector.X, vector.Z).Radians();
                 }
-                else if (TargetPosition.X != float.MinValue)
+                else if (TargetPosition.X != float.MinValue || TargetPositionCustomAction != null)
                 {
-                    Vector3 vector2 = TargetPosition - Owner.Position;
+                    Vector3 far = EffectiveTargetPosition();
+                    Vector3 vector2 = far - ownerPos;
                     angle = MathF.Atan2(vector2.X, vector2.Z).Radians();
                 }
                 Vector3 vector3 = RotateOffset(Offset, angle);
-                Vector3 position = Owner.Position - vector3;
+                Vector3 position = ownerPos - vector3;
+                LastPosition = position;
                 UpdatePosition(position);
             }
         }
@@ -304,12 +324,13 @@ public class StaticVfx : BaseVfx
             Angle angle2 = Rotation;
             if (Target != null)
             {
-                Vector3 vector4 = Target.Position - Position;
+                Vector3 vector4 = Target.RenderPosition() - Position;
                 angle2 = MathF.Atan2(vector4.X, vector4.Z).Radians();
             }
-            else if (TargetPosition.X != float.MinValue)
+            else if (TargetPosition.X != float.MinValue || TargetPositionCustomAction != null)
             {
-                Vector3 vector5 = TargetPosition - Position;
+                Vector3 far = EffectiveTargetPosition();
+                Vector3 vector5 = far - Position;
                 angle2 = MathF.Atan2(vector5.X, vector5.Z).Radians();
             }
             if (PositionCustomAction != null)
@@ -318,6 +339,7 @@ public class StaticVfx : BaseVfx
             }
             Vector3 vector6 = RotateOffset(Offset, angle2);
             Vector3 position2 = Position - vector6;
+            LastPosition = position2;
             UpdatePosition(position2);
         }
     }
@@ -333,30 +355,35 @@ public class StaticVfx : BaseVfx
     {
         if (Owner != null)
         {
-            Angle angle = (FixRotation ? Rotation : (Owner.Rotation.Radians() + Rotation));
+            IGameObject ownerObj = Svc.Objects.FirstOrDefault((IGameObject o) => o.Address == (IntPtr)_ownerAddress);
+            if (ownerObj == null) return;
+            Vector3 ownerPos = ownerObj.RenderPosition();
+            Angle angle = (FixRotation ? Rotation : (ownerObj.Rotation.Radians() + Rotation));
             if (Target != null)
             {
-                Vector3 vector = Target.Position - Owner.Position;
+                Vector3 vector = Target.RenderPosition() - ownerPos;
                 angle = MathF.Atan2(vector.X, vector.Z).Radians();
             }
-            else if (TargetPosition.X != float.MinValue)
+            else if (TargetPosition.X != float.MinValue || TargetPositionCustomAction != null)
             {
-                Vector3 vector2 = TargetPosition - Owner.Position;
+                Vector3 far = EffectiveTargetPosition();
+                Vector3 vector2 = far - ownerPos;
                 angle = MathF.Atan2(vector2.X, vector2.Z).Radians();
             }
             UpdateRotation(new Vector3(0f, 0f, (angle + OffsetRotation).Rad));
         }
         else
         {
-            Angle angle2 = Rotation;
-            if (Target != null)
+            Angle angle2 = RotationCustomAction != null ? RotationCustomAction() : Rotation;
+            if (RotationCustomAction == null && Target != null)
             {
-                Vector3 vector3 = Target.Position - Position;
+                Vector3 vector3 = Target.RenderPosition() - Position;
                 angle2 = MathF.Atan2(vector3.X, vector3.Z).Radians();
             }
-            else if (TargetPosition.X != float.MinValue)
+            else if (RotationCustomAction == null && (TargetPosition.X != float.MinValue || TargetPositionCustomAction != null))
             {
-                Vector3 vector4 = TargetPosition - Position;
+                Vector3 far = EffectiveTargetPosition();
+                Vector3 vector4 = far - Position;
                 angle2 = MathF.Atan2(vector4.X, vector4.Z).Radians();
             }
             UpdateRotation(new Vector3(0f, 0f, (angle2 + OffsetRotation).Rad));
@@ -367,24 +394,31 @@ public class StaticVfx : BaseVfx
     {
         if (EndToTarget && Target != null)
         {
-            if (Owner != null)
+            IGameObject? ownerObj = Owner != null
+                ? Svc.Objects.FirstOrDefault((IGameObject o) => o.Address == (IntPtr)_ownerAddress)
+                : null;
+            if (ownerObj != null)
             {
-                UpdateScale(new Vector3(Scale.X, Scale.Y, Vector3.Distance(Owner.Position, Target.Position)));
+                UpdateScale(new Vector3(Scale.X, Scale.Y, Vector3.Distance(ownerObj.RenderPosition(), Target.RenderPosition())));
             }
             else
             {
-                UpdateScale(new Vector3(Scale.X, Scale.Y, Vector3.Distance(Position, Target.Position)));
+                UpdateScale(new Vector3(Scale.X, Scale.Y, Vector3.Distance(Position, Target.RenderPosition())));
             }
         }
-        if (TargetPosition.X != float.MinValue && EndToTarget)
+        if ((TargetPosition.X != float.MinValue || TargetPositionCustomAction != null) && EndToTarget)
         {
-            if (Owner != null)
+            Vector3 far = EffectiveTargetPosition();
+            IGameObject? ownerObj = Owner != null
+                ? Svc.Objects.FirstOrDefault((IGameObject o) => o.Address == (IntPtr)_ownerAddress)
+                : null;
+            if (ownerObj != null)
             {
-                UpdateScale(new Vector3(Scale.X, Scale.Y, Vector3.Distance(Owner.Position, TargetPosition)));
+                UpdateScale(new Vector3(Scale.X, Scale.Y, Vector3.Distance(ownerObj.RenderPosition(), far)));
             }
             else
             {
-                UpdateScale(new Vector3(Scale.X, Scale.Y, Vector3.Distance(Position, TargetPosition)));
+                UpdateScale(new Vector3(Scale.X, Scale.Y, Vector3.Distance(Position, far)));
             }
         }
     }

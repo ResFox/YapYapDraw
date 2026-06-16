@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin.Services;
 using YapYapDraw.Engine.Element;
 using YapYapDraw.Engine.Enum;
+using YapYapDraw.Engine.Helper;
 using YapYapDraw.Engine.Managers;
 using YapYapDraw.Engine.Util;
 using YapYapDraw.Engine.Vfx;
@@ -19,8 +21,9 @@ public sealed class QuickDrawEngine
 {
     private const double SuppressSeconds = 2.5;
 
-    private readonly Configuration _config;
-    private readonly IPluginLog    _log;
+    private readonly Configuration    _config;
+    private readonly IPluginLog       _log;
+    private readonly CombatLogCapture _capture;
     private readonly Dictionary<string, Regex>    _regexCache = new();
     private readonly Dictionary<string, DateTime> _lastFire   = new();
     private readonly Dictionary<string, string>   _vars       = new(StringComparer.OrdinalIgnoreCase);
@@ -44,8 +47,147 @@ public sealed class QuickDrawEngine
         public BindKind  Bind;
         public uint      BindSrc;
         public uint      BindId;
+        public string    ShapeId = "";
     }
     private readonly Dictionary<string, List<Tracked>> _live = new();
+
+    private sealed class ShapeAnchor
+    {
+        public Func<Vector3?> Pos = () => null;
+        public Vector3        Last;
+        public DateTime       Expiry;
+        public IGameObject?   Owner;
+    }
+    private readonly Dictionary<string, ShapeAnchor> _shapeAnchors = new();
+
+    // Shapes waiting on a per-shape start delay before they appear.
+    private readonly List<(DateTime when, string ownerId, DrawSpec d, LogEvent e)> _pendingShape = new();
+
+    private sealed class LiveLabel
+    {
+        public string         OwnerId = "";
+        public Func<Vector3?> World   = () => null;
+        public string         Text    = "";
+        public Vector4        Color;
+        public float          Size    = 1f;
+        public DateTime       Expiry;
+        public Vector2        Screen;
+        public bool           HasScreen;
+        public bool           FollowsActor;
+        public Vector3        Anchor;
+        public bool           AnchorInit;
+        public BindKind       Bind;
+        public uint           BindSrc;
+        public uint           BindId;
+
+        public Vector3 SmoothAnchor(Vector3 raw)
+        {
+            if (!AnchorInit)
+            {
+                Anchor = raw;
+                AnchorInit = true;
+                return raw;
+            }
+
+            Anchor = new Vector3(raw.X, Anchor.Y + (raw.Y - Anchor.Y) * 0.1f, raw.Z);
+            return Anchor;
+        }
+    }
+    private readonly List<LiveLabel> _labels = new();
+
+    private sealed class LiveArrow
+    {
+        public string         OwnerId = "";
+        public bool           Chevron;
+        public Func<Vector3?> Origin = () => null;
+        public Func<Vector3?> Target = () => null;
+        public bool           HasTarget;
+        public uint           HeadingId;
+        public bool           Orient;
+        public float          Rotation;   // radians
+        public float          Length;
+        public float          Spacing;
+        public float          Thickness;
+        public float          HeadSize;
+        public Vector4        Color;
+        public DateTime       Expiry;
+        public BindKind       Bind;
+        public uint           BindSrc;
+        public uint           BindId;
+    }
+    private readonly List<LiveArrow> _arrows = new();
+
+    public readonly record struct ArrowGeo(
+        Vector3 Origin, float Angle, float Length, float Spacing,
+        float Thickness, float HeadSize, Vector4 Color, bool Chevron);
+
+    public IEnumerable<ArrowGeo> ActiveArrows()
+    {
+        var now = DateTime.Now;
+        foreach (var a in _arrows)
+        {
+            if (a.Expiry <= now) continue;
+            var o = a.Origin();
+            if (o == null) continue;
+            var origin = o.Value;
+
+            float angle  = a.Rotation;
+            float length = a.Length;
+
+            if (a.HasTarget)
+            {
+                var t = a.Target?.Invoke();
+                if (t == null) continue;
+                float dx = t.Value.X - origin.X;
+                float dz = t.Value.Z - origin.Z;
+                float flat = MathF.Sqrt(dx * dx + dz * dz);
+                if (flat >= 0.1f)
+                {
+                    angle  = MathF.Atan2(dx, dz) + a.Rotation;
+                    length = flat;
+                }
+                else
+                {
+                    angle  = a.Rotation;
+                    length = a.Length;
+                }
+            }
+            else if (a.Orient && a.HeadingId != 0)
+            {
+                var ho = Plugin.ObjectTable.SearchById(a.HeadingId);
+                angle = (ho?.Rotation ?? 0f) + a.Rotation;
+            }
+
+            yield return new ArrowGeo(origin, angle, MathF.Max(0.5f, length),
+                MathF.Max(0.5f, a.Spacing), a.Thickness, a.HeadSize, a.Color, a.Chevron);
+        }
+    }
+
+    public void RefreshLabelScreens()
+    {
+        var now = DateTime.Now;
+        foreach (var l in _labels)
+        {
+            l.HasScreen = false;
+            if (l.Expiry <= now) continue;
+            var w = l.World();
+            if (w == null) continue;
+            var world = l.FollowsActor ? l.SmoothAnchor(w.Value) : w.Value;
+            if (!PositionHelper.StableWorldToScreen(world, out var screen)) continue;
+            l.Screen = screen;
+            l.HasScreen = true;
+        }
+    }
+
+    public IEnumerable<(Vector2 Screen, string Text, Vector4 Color, float Size)> ActiveLabelScreens()
+    {
+        var now = DateTime.Now;
+        foreach (var l in _labels)
+        {
+            if (l.Expiry <= now || !l.HasScreen) continue;
+            yield return (l.Screen, l.Text, l.Color, l.Size);
+        }
+    }
 
     private sealed class ActiveCast { public float Duration; public DateTime Ends; }
     private readonly Dictionary<(uint actor, uint action), ActiveCast> _activeCasts = new();
@@ -60,10 +202,15 @@ public sealed class QuickDrawEngine
         public string       Key     = "";
     }
 
-    public QuickDrawEngine(Configuration config, IPluginLog log)
+    public readonly record struct FireMark(DateTime When, string Draw, string Trigger);
+    private readonly List<FireMark> _recentFires = new();
+    public IReadOnlyList<FireMark> RecentFires => _recentFires;
+
+    public QuickDrawEngine(Configuration config, IPluginLog log, CombatLogCapture capture)
     {
-        _config = config;
-        _log    = log;
+        _config  = config;
+        _log     = log;
+        _capture = capture;
     }
 
     public void Handle(LogEvent e)
@@ -95,6 +242,9 @@ public sealed class QuickDrawEngine
 
                 _lastFire[key] = DateTime.Now;
 
+                _recentFires.Add(new FireMark(DateTime.Now, t.Name, string.IsNullOrEmpty(e.Name) ? e.SourceName : e.Name));
+                if (_recentFires.Count > 40) _recentFires.RemoveRange(0, _recentFires.Count - 40);
+
                 ApplyVars(t, e);
 
                 if (t.DelaySeconds > 0.01f)
@@ -109,12 +259,22 @@ public sealed class QuickDrawEngine
 
     public void Fire(QuickDrawDef t, LogEvent e) => Fire(t, e, InstanceKey(t.Id, TriggerSubject(t, e)));
 
+    // Reusable draw entry points for callers outside the QuickDraw matcher (strat
+    // engine, IPC). They build a DrawSpec and let the engine own the live shape.
+    public void SpawnExternal(string ownerId, DrawSpec d, LogEvent e, bool previewSelf = false)
+        => SpawnShape(ownerId, d, e, previewSelf);
+
+    public void ClearExternal(string ownerId) => ClearOwner(ownerId);
+
     private void Fire(QuickDrawDef t, LogEvent e, string key)
     {
+        EnsureIds(t);
         if (ModeOf(t) == Concurrency.Replace) ClearOwner(key);
 
         if (t.DrawEnabled)
-            SpawnShape(key, t.Draw, e);
+            SpawnSpec(key, t.Draw, e);
+        foreach (var ex in t.ExtraShapes)
+            SpawnSpec(key, ex, e);
 
         var now = DateTime.Now;
         foreach (var s in t.FollowUps)
@@ -144,7 +304,9 @@ public sealed class QuickDrawEngine
     private void FireStep(FollowUpStep s, LogEvent ctx, string key)
     {
         if (s.DrawEnabled)
-            SpawnShape(key, s.Draw, ctx);
+            SpawnSpec(key, s.Draw, ctx);
+        foreach (var ex in s.ExtraShapes)
+            SpawnSpec(key, ex, ctx);
     }
 
     private static string InstanceKey(string id, uint subject)
@@ -166,46 +328,178 @@ public sealed class QuickDrawEngine
 
     public void Preview(QuickDrawDef t)
     {
+        EnsureIds(t);
         var sample = new LogEvent { Name = string.IsNullOrEmpty(t.Pattern) ? "Sample" : t.Pattern };
+        ClearOwner(t.Id);
         if (t.DrawEnabled)
-        {
-            ClearOwner(t.Id);
             SpawnShape(t.Id, t.Draw, sample, previewSelf: true);
+        foreach (var ex in t.ExtraShapes)
+            SpawnShape(t.Id, ex, sample, previewSelf: true);
+    }
+
+    public void PreviewShape(QuickDrawDef t, DrawSpec d)
+    {
+        EnsureIds(t);
+        var sample = new LogEvent { Name = "Sample" };
+        ClearOwner("preview_shape");
+        foreach (var dep in DependencyShapes(t, d))
+            SpawnShape("preview_shape", dep, sample, previewSelf: true);
+        SpawnShape("preview_shape", d, sample, previewSelf: true);
+    }
+
+    public static void EnsureIds(QuickDrawDef t)
+    {
+        t.Draw.EnsureId();
+        foreach (var ex in t.ExtraShapes) ex.EnsureId();
+        foreach (var s in t.FollowUps)
+        {
+            s.Draw.EnsureId();
+            foreach (var ex in s.ExtraShapes) ex.EnsureId();
         }
+        EnsureLinkIds(t);
+    }
+
+    private static void EnsureLinkIds(QuickDrawDef t)
+    {
+        foreach (var d in EnumerateDraws(t))
+        {
+            if (d.Anchor == DrawAnchor.LinkedShape && string.IsNullOrEmpty(d.AnchorShapeId))
+            {
+                var pick = FirstLinkableShape(t, d.Id);
+                if (pick != null) d.AnchorShapeId = pick;
+            }
+            if (d.Link == LinkTarget.LinkedShape && string.IsNullOrEmpty(d.LinkShapeId))
+            {
+                var pick = FirstLinkableShape(t, d.Id);
+                if (pick != null) d.LinkShapeId = pick;
+            }
+        }
+    }
+
+    private static IEnumerable<DrawSpec> EnumerateDraws(QuickDrawDef t)
+    {
+        yield return t.Draw;
+        foreach (var ex in t.ExtraShapes) yield return ex;
+        foreach (var fu in t.FollowUps)
+        {
+            yield return fu.Draw;
+            foreach (var ex in fu.ExtraShapes) yield return ex;
+        }
+    }
+
+    private static string? FirstLinkableShape(QuickDrawDef t, string excludeId)
+    {
+        if (t.Draw.Id != excludeId) return t.Draw.Id;
+        foreach (var ex in t.ExtraShapes)
+            if (ex.Id != excludeId) return ex.Id;
+        foreach (var fu in t.FollowUps)
+        {
+            if (fu.Draw.Id != excludeId) return fu.Draw.Id;
+            foreach (var ex in fu.ExtraShapes)
+                if (ex.Id != excludeId) return ex.Id;
+        }
+        return null;
     }
 
     private void SpawnShape(string ownerId, DrawSpec d, LogEvent e, bool previewSelf = false)
     {
         Vector3? pos = ResolvePosition(d, e, previewSelf, out IGameObject? attach);
-        if (pos == null && attach == null) return;
+        if (pos == null && attach == null && d.Anchor != DrawAnchor.LinkedShape) return;
 
+        int repeat = Math.Max(1, d.Repeat);
+        for (int i = 0; i < repeat; i++)
+        {
+            var ds = d;
+            if (i > 0)
+            {
+                float rotOffset = i * d.RepeatStep;
+                ds = d.Clone();
+                ds.Rotation = d.Rotation + rotOffset;
+                // Sweep the nudge around the anchor too, so offset shapes ring it.
+                float rad = rotOffset * MathF.PI / 180f;
+                float c = MathF.Cos(rad), s = MathF.Sin(rad);
+                ds.OffsetForward = d.OffsetForward * c - d.OffsetSide * s;
+                ds.OffsetSide    = d.OffsetForward * s + d.OffsetSide * c;
+            }
+            SpawnOne(ownerId, ds, e, pos, attach);
+        }
+
+        SpawnLabel(ownerId, d, e, pos, attach, previewSelf);
+
+        // Text / Arrow / Path make no floor VFX, so register their spot here or
+        // nothing else could connect to them.
+        if (d.Shape is QuickShape.Text or QuickShape.Arrow or QuickShape.ChevronPath)
+        {
+            d.EnsureId();
+            RegisterPointAnchor(d.Id, BuildAnchorPosFunc(d, pos, attach), ResolveEventLife(d, e));
+        }
+    }
+
+    private Func<Vector3?> BuildAnchorPosFunc(DrawSpec d, Vector3? pos, IGameObject? attach)
+    {
+        bool glue = d.AttachToActor && attach != null && d.Anchor != DrawAnchor.LinkedShape;
+        uint followId = glue ? attach!.EntityId : 0;
+        Vector3 fixedPos = pos ?? (attach != null ? attach.Position : new Vector3(100f, 0f, 100f));
+        if (followId != 0)
+            return () => Plugin.ObjectTable.SearchById(followId)?.Position ?? fixedPos;
+        if (d.Anchor == DrawAnchor.LinkedShape)
+            return () => ResolveLinkedShapePos(d.AnchorShapeId) ?? fixedPos;
+        return () => fixedPos;
+    }
+
+    private void RegisterPointAnchor(string id, Func<Vector3?> pos, float life)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        _shapeAnchors[id] = new ShapeAnchor
+        {
+            Expiry = DateTime.Now.AddSeconds(life),
+            Pos    = pos,
+        };
+    }
+
+    private void SpawnOne(string ownerId, DrawSpec d, LogEvent e, Vector3? pos, IGameObject? attach)
+    {
+        if (d.Shape == QuickShape.Text) return;
+        if (d.Shape is QuickShape.Arrow or QuickShape.ChevronPath)
+        {
+            SpawnArrow(ownerId, d, e, pos, attach);
+            return;
+        }
+
+        d.EnsureId();
         float life = ResolveEventLife(d, e);
         float ms   = Math.Max(0.1f, life) * 1000f;
-        bool  glue = d.AttachToActor && attach != null;
-
-        // Spinning with the actor only works while glued to one.
-        bool faceActor = d.OrientToFacing && glue;
+        bool  glue = d.AttachToActor && attach != null && d.Anchor != DrawAnchor.LinkedShape;
+        var   linkOwner = d.Anchor == DrawAnchor.LinkedShape ? ResolveLinkedShapeOwner(d.AnchorShapeId) : null;
+        bool  faceActor = d.OrientToFacing && (glue ? attach != null : linkOwner != null);
 
         var elem = new DrawElement
         {
-            Position     = pos ?? (attach != null ? attach.Position : new Vector3(100, 0, 100)),
+            Position     = pos ?? (attach != null ? attach.RenderPosition() : new Vector3(100, 0, 100)),
             drawOnObject = glue,
             refColor       = d.Color,
             refTargetColor = d.Color,
             destroyTime  = ms,
-            // Local frame: forward is -Z, right is -X after the engine's rotate+subtract.
             refOffsetZ = -d.OffsetForward,
             refOffsetX = -d.OffsetSide,
         };
 
-        // A tether needs a live actor to grow out of; if the anchor isn't an actor,
-        // start it from the player so it still points at the far end.
-        IGameObject? owner = glue ? attach : null;
-        if (d.Shape == QuickShape.Line && owner == null)
+        if (d.Anchor == DrawAnchor.LinkedShape)
         {
-            owner = Actor(Plugin.PlayerState.EntityId);
-            glue  = owner != null;
+            elem.drawOnObject = false;
+            elem.PositionCustomAction = () => ResolveLinkedShapePos(d.AnchorShapeId) ?? elem.Position;
+            if (d.OrientToFacing && linkOwner != null)
+            {
+                elem.fixRotation = false;
+                elem.RotationCustomAction = () =>
+                {
+                    var o = ResolveLinkedShapeOwner(d.AnchorShapeId);
+                    return o != null ? o.Rotation.Radians() + d.Rotation.Degrees() : d.Rotation.Degrees();
+                };
+            }
         }
+
+        IGameObject? owner = glue ? attach : null;
 
         if (!ApplyLegacyCustom(elem, d, faceActor))
         switch (d.Shape)
@@ -224,16 +518,25 @@ public sealed class QuickDrawEngine
                 break;
             }
             case QuickShape.Fan:
-                elem.drawAvfx = ShapeUtil.GetGameFanOmen(d.FanAngle);
+                // Stock game fan omens carry baked-in art that muddies a flat tint
+                // (cyan in particular), so build a clean fan that takes the colour.
+                elem.drawAvfx = "customFan";
                 elem.refRadian = d.FanAngle.Degrees().Rad;
                 elem.radiusX = d.Radius; elem.radiusZ = d.Radius;
                 ApplyRotation(elem, d, faceActor);
                 break;
             case QuickShape.Rectangle:
-                elem.drawAvfx = "customRect";
-                elem.radiusX = d.HalfWidth;
-                elem.radiusZ = d.Length;
-                ApplyRotation(elem, d, faceActor);
+                if (d.SpanToTarget)
+                {
+                    SetupLine(elem, d, e, attach, glue);
+                }
+                else
+                {
+                    elem.drawAvfx = "customRect";
+                    elem.radiusX = d.HalfWidth;
+                    elem.radiusZ = d.Length;
+                    ApplyRotation(elem, d, faceActor);
+                }
                 break;
             case QuickShape.Line:
                 SetupLine(elem, d, e, attach, glue);
@@ -261,17 +564,138 @@ public sealed class QuickDrawEngine
 
         if (!_live.TryGetValue(ownerId, out var list)) { list = new(); _live[ownerId] = list; }
 
-        var tracked = new Tracked { Vfx = vfx, Expiry = DateTime.Now.AddSeconds(life) };
+        var tracked = new Tracked { Vfx = vfx, Expiry = DateTime.Now.AddSeconds(life), ShapeId = d.Id };
         if (d.UseEventDuration)
         {
-            // Pin the shape to the live event so it dies the instant the snapshot
-            // lands, not a frame early or late from a guessed timer.
             if (e.Kind == LogKind.CastStart && e.SourceId != 0)
             { tracked.Bind = BindKind.Cast; tracked.BindSrc = e.SourceId; tracked.BindId = e.DataId; }
             else if (e.Kind == LogKind.StatusGain && e.TargetId != 0)
             { tracked.Bind = BindKind.Status; tracked.BindSrc = e.TargetId; tracked.BindId = e.DataId; }
         }
         list.Add(tracked);
+        RegisterShapeAnchor(d.Id, vfx, life);
+    }
+
+    private void SpawnLabel(string ownerId, DrawSpec d, LogEvent e, Vector3? pos, IGameObject? attach, bool previewSelf)
+    {
+        if (string.IsNullOrWhiteSpace(d.Label)) return;
+
+        float life = ResolveEventLife(d, e);
+        bool  glue = d.AttachToActor && attach != null;
+        uint  followId = glue ? attach!.EntityId : 0;
+        Vector3 fixedPos = pos ?? (attach != null ? attach.Position : new Vector3(100, 0, 100));
+        if (d.Anchor == DrawAnchor.LinkedShape)
+        {
+            followId = 0;
+            fixedPos = ResolveLinkedShapePos(d.AnchorShapeId) ?? fixedPos;
+        }
+        var up  = new Vector3(0f, d.LabelHeight, 0f);
+        var col = d.LabelColor.W <= 0.01f ? d.LabelColor with { W = 1f } : d.LabelColor;
+
+        _labels.Add(new LiveLabel
+        {
+            OwnerId      = ownerId,
+            FollowsActor = followId != 0,
+            World        = followId != 0
+                ? () =>
+                {
+                    var o = Plugin.ObjectTable.SearchById(followId);
+                    return o == null ? null : o.Position + up;
+                }
+                : d.Anchor == DrawAnchor.LinkedShape
+                    ? () => (ResolveLinkedShapePos(d.AnchorShapeId) ?? fixedPos) + up
+                    : () => fixedPos + up,
+            Text    = d.Label,
+            Color   = col,
+            Size    = MathF.Max(0.3f, d.LabelSize),
+            Expiry  = DateTime.Now.AddSeconds(life),
+        });
+
+        var label = _labels[^1];
+        if (d.UseEventDuration)
+        {
+            if (e.Kind == LogKind.CastStart && e.SourceId != 0)
+            { label.Bind = BindKind.Cast; label.BindSrc = e.SourceId; label.BindId = e.DataId; }
+            else if (e.Kind == LogKind.StatusGain && e.TargetId != 0)
+            { label.Bind = BindKind.Status; label.BindSrc = e.TargetId; label.BindId = e.DataId; }
+        }
+    }
+
+    private static bool IsPositionalLink(LinkTarget l) =>
+        l == LinkTarget.FixedSpot || l == LinkTarget.ArenaCenter ||
+        (l >= LinkTarget.WaymarkA && l <= LinkTarget.Waymark4);
+
+    private void SpawnArrow(string ownerId, DrawSpec d, LogEvent e, Vector3? pos, IGameObject? attach)
+    {
+        d.EnsureId();
+        float life = ResolveEventLife(d, e);
+        bool  glue = d.AttachToActor && attach != null && d.Anchor != DrawAnchor.LinkedShape;
+        uint  followId = glue ? attach!.EntityId : 0;
+        Vector3 fixedPos = pos ?? (attach != null ? attach.Position : new Vector3(100, 0, 100));
+
+        Func<Vector3?> originFn =
+            followId != 0
+                ? () => Plugin.ObjectTable.SearchById(followId)?.Position
+                : d.Anchor == DrawAnchor.LinkedShape
+                    ? () => ResolveLinkedShapePos(d.AnchorShapeId) ?? fixedPos
+                    : () => fixedPos;
+
+        var  farActor = ResolveLink(d, e, attach);
+        uint farId    = farActor?.EntityId ?? 0;
+        Func<Vector3?> targetFn;
+        bool hasTarget = true;
+        if (farId != 0)
+            targetFn = () => Plugin.ObjectTable.SearchById(farId)?.Position;
+        else if (d.Link == LinkTarget.LinkedShape)
+            targetFn = () => ResolveLinkedShapePos(d.LinkShapeId);
+        else if (IsPositionalLink(d.Link))
+        {
+            var fp = ResolveLinkPosition(d, e);
+            targetFn = () => fp;
+        }
+        else
+        {
+            targetFn  = () => null;
+            hasTarget = false;
+        }
+
+        var col = d.Color.W <= 0.01f ? d.Color with { W = 1f } : d.Color;
+
+        var arrow = new LiveArrow
+        {
+            OwnerId   = ownerId,
+            Chevron   = d.Shape == QuickShape.ChevronPath,
+            Origin    = originFn,
+            Target    = targetFn,
+            HasTarget = hasTarget,
+            HeadingId = followId,
+            Orient    = d.OrientToFacing,
+            Rotation  = d.Rotation * (MathF.PI / 180f),
+            Length    = d.Length,
+            Spacing   = d.ChevronSpacing,
+            Thickness = MathF.Max(1f, d.LineThickness),
+            HeadSize  = MathF.Max(0.5f, d.HalfWidth),
+            Color     = col,
+            Expiry    = DateTime.Now.AddSeconds(life),
+        };
+        if (d.UseEventDuration)
+        {
+            if (e.Kind == LogKind.CastStart && e.SourceId != 0)
+            { arrow.Bind = BindKind.Cast; arrow.BindSrc = e.SourceId; arrow.BindId = e.DataId; }
+            else if (e.Kind == LogKind.StatusGain && e.TargetId != 0)
+            { arrow.Bind = BindKind.Status; arrow.BindSrc = e.TargetId; arrow.BindId = e.DataId; }
+        }
+        _arrows.Add(arrow);
+    }
+
+    // Spawn now, or hold for the shape's own start delay so a multi-shape draw can
+    // play out as a timed sequence. Previews ignore the delay.
+    private void SpawnSpec(string ownerId, DrawSpec d, LogEvent e, bool previewSelf = false)
+    {
+        if (!previewSelf && d.StartDelay > 0.01f)
+            _pendingShape.Add((DateTime.Now.AddSeconds(d.StartDelay), ownerId, d, e));
+        else
+            SpawnShape(ownerId, d, e, previewSelf);
     }
 
     // A bound shape is cleared the moment its cast resolves (CastFinish / the
@@ -292,9 +716,12 @@ public sealed class QuickDrawEngine
             {
                 var tr = list[i];
                 if (tr.Bind != kind || tr.BindSrc != src || tr.BindId != id) continue;
+                UnregisterShapeAnchor(tr.ShapeId);
                 try { tr.Vfx.Remove(); } catch { }
                 list.RemoveAt(i);
             }
+        _labels.RemoveAll(l => l.Bind == kind && l.BindSrc == src && l.BindId == id);
+        _arrows.RemoveAll(a => a.Bind == kind && a.BindSrc == src && a.BindId == id);
     }
 
     private static void ApplyRotation(DrawElement elem, DrawSpec d, bool faceActor)
@@ -418,10 +845,27 @@ public sealed class QuickDrawEngine
         var far = ResolveLink(d, e, anchor);
         if (far != null)
             elem.target = far;
+        else if (d.Link == LinkTarget.LinkedShape)
+            elem.TargetPositionCustomAction = () => ResolveLinkedShapePos(d.LinkShapeId) ?? elem.targetPosition;
         else
-            elem.targetPosition = d.Link == LinkTarget.FixedSpot
-                ? d.LinkPosition
-                : new Vector3(e.X, 0f, e.Y);
+            elem.targetPosition = ResolveLinkPosition(d, e);
+    }
+
+    // The far end as a world point when it isn't a live actor (fixed spot, a
+    // waymark, the arena centre, or the event's own position).
+    private static Vector3 ResolveLinkPosition(DrawSpec d, LogEvent e)
+    {
+        switch (d.Link)
+        {
+            case LinkTarget.FixedSpot:
+                return d.LinkPosition;
+            case LinkTarget.ArenaCenter:
+                return ArenaCenter;
+            case >= LinkTarget.WaymarkA and <= LinkTarget.Waymark4:
+                return Waymark((int)d.Link - (int)LinkTarget.WaymarkA) ?? d.LinkPosition;
+            default:
+                return new Vector3(e.X, 0f, e.Y);
+        }
     }
 
     private IGameObject? ResolveLink(DrawSpec d, LogEvent e, IGameObject? anchor)
@@ -438,10 +882,29 @@ public sealed class QuickDrawEngine
                 return Nearest(anchor, onlyPlayers: false, wantEnemy: true);
             case LinkTarget.PlayerWithSameStatus:
                 return PlayerWithStatus(anchor, e.DataId);
+            case LinkTarget.TetheredToMe:
+                return TetheredActor(d.TetherFilterId);
+            case LinkTarget.LinkedShape:
+                return null;
             case LinkTarget.FixedSpot:
             default:
                 return null;
         }
+    }
+
+    // The live actor on the other end of a tether attached to the local player.
+    // From is the tether owner (e.g. the clone), To is the target.
+    private IGameObject? TetheredActor(uint tetherId)
+    {
+        uint me = Plugin.PlayerState.EntityId;
+        if (me == 0) return null;
+        foreach (var t in _capture.ActiveTethers)
+        {
+            if (tetherId != 0 && t.Id != tetherId) continue;
+            if (t.To == me && t.From != 0) return Actor(t.From);
+            if (t.From == me && t.To != 0) return Actor(t.To);
+        }
+        return null;
     }
 
     private static IGameObject? Nearest(IGameObject? from, bool onlyPlayers, bool wantEnemy)
@@ -481,12 +944,12 @@ public sealed class QuickDrawEngine
     {
         attach = null;
 
-        // A preview has no real event actors, so everything but a fixed spot falls
-        // back to the player. The fixed spot carries a real coordinate already, so
-        // honour it — otherwise "test" would always snap the shape onto you.
-        if (previewSelf && d.Anchor != DrawAnchor.FixedPosition)
+        // A preview has no real event actors, so everything but a real coordinate
+        // (fixed spot, waymark, arena centre) falls back to the player — otherwise
+        // "test" would always snap the shape onto you.
+        if (previewSelf && d.Anchor != DrawAnchor.FixedPosition && d.Anchor < DrawAnchor.WaymarkA)
         {
-            var me = Actor(Plugin.PlayerState.EntityId);
+            var me = LocalPlayer();
             if (me != null) { attach = me; return me.Position; }
             return new Vector3(100, 0, 100);
         }
@@ -500,18 +963,52 @@ public sealed class QuickDrawEngine
                 attach = Actor(e.TargetId);
                 return attach?.Position;
             case DrawAnchor.Self:
-                attach = Actor(Plugin.PlayerState.EntityId);
+                attach = LocalPlayer();
                 return attach?.Position;
             case DrawAnchor.EventPosition:
                 return new Vector3(e.X, 0f, e.Y);
+            case DrawAnchor.TetheredToMe:
+                attach = TetheredActor(d.TetherFilterId);
+                return attach?.Position;
+            case DrawAnchor.ArenaCenter:
+                return ArenaCenter;
+            case >= DrawAnchor.WaymarkA and <= DrawAnchor.Waymark4:
+                return Waymark((int)d.Anchor - (int)DrawAnchor.WaymarkA);
+            case DrawAnchor.LinkedShape:
+                return ResolveLinkedShapePos(d.AnchorShapeId);
+            case DrawAnchor.NearbyActorById:
+                attach = NearestByBaseId(d.AnchorActorBaseId, e);
+                return attach?.RenderPosition();
             case DrawAnchor.FixedPosition:
             default:
                 return d.FixedPosition;
         }
     }
 
+    private static readonly Vector3 ArenaCenter = new(100f, 0f, 100f);
+
+    // Field markers in game order A,B,C,D,1,2,3,4 (indices 0-7).
+    private static unsafe Vector3? Waymark(int index)
+    {
+        var mc = FFXIVClientStructs.FFXIV.Client.Game.UI.MarkingController.Instance();
+        if (mc == null) return null;
+        int i = 0;
+        foreach (ref var m in mc->FieldMarkers)
+        {
+            if (i == index)
+                return m.Active ? new Vector3(m.X / 1000f, m.Y / 1000f, m.Z / 1000f) : null;
+            i++;
+        }
+        return null;
+    }
+
     private static IGameObject? Actor(uint id)
         => id == 0 ? null : Plugin.ObjectTable.SearchById(id);
+
+    // The object-table local player is the reliable handle; the player-state id can
+    // briefly fail to resolve and snap a Self-anchored shape onto arena centre.
+    private static IGameObject? LocalPlayer()
+        => Plugin.ObjectTable.LocalPlayer ?? Actor(Plugin.PlayerState.EntityId);
 
     private bool OwnerLive(string id)
     {
@@ -521,10 +1018,18 @@ public sealed class QuickDrawEngine
 
     private void ClearOwner(string id)
     {
-        if (!_live.TryGetValue(id, out var list)) return;
-        foreach (var t in list)
-            try { t.Vfx.Remove(); } catch { }
-        list.Clear();
+        _pendingShape.RemoveAll(p => p.ownerId == id);
+        _labels.RemoveAll(l => l.OwnerId == id);
+        _arrows.RemoveAll(a => a.OwnerId == id);
+        if (_live.TryGetValue(id, out var list))
+        {
+            foreach (var t in list)
+            {
+                UnregisterShapeAnchor(t.ShapeId);
+                try { t.Vfx.Remove(); } catch { }
+            }
+            list.Clear();
+        }
     }
 
     private void PruneOwner(string id)
@@ -709,11 +1214,28 @@ public sealed class QuickDrawEngine
             FireStep(s, ctx, key);
         }
 
+        for (int i = _pendingShape.Count - 1; i >= 0; i--)
+        {
+            if (_pendingShape[i].when > now) continue;
+            var (_, oid, d, ev) = _pendingShape[i];
+            _pendingShape.RemoveAt(i);
+            SpawnShape(oid, d, ev);
+        }
+
         for (int i = _armedFollow.Count - 1; i >= 0; i--)
             if (_armedFollow[i].Expiry <= now) _armedFollow.RemoveAt(i);
 
         for (int i = _clearWatch.Count - 1; i >= 0; i--)
             if (_clearWatch[i].expiry <= now) _clearWatch.RemoveAt(i);
+
+        _labels.RemoveAll(l => l.Expiry <= now);
+        _arrows.RemoveAll(a => a.Expiry <= now);
+
+        foreach (var key in _shapeAnchors.Keys.ToList())
+        {
+            if (_shapeAnchors[key].Expiry <= now)
+                _shapeAnchors.Remove(key);
+        }
 
         foreach (var key in _live.Keys) PruneOwner(key);
     }
@@ -777,6 +1299,7 @@ public sealed class QuickDrawEngine
         if (!NameContains(t.TargetName, e.TargetName)) return false;
         if (!NumMatches(t, e)) return false;
         if (!VarMatches(t, e)) return false;
+        if (!StatusMatches(t, e)) return false;
 
         if (t.MatchById) return e.DataId == t.DataId;
 
@@ -832,7 +1355,8 @@ public sealed class QuickDrawEngine
         foreach (var c in t.NumConds)
         {
             float v = ReadField(c.Field, e);
-            if ((c.Field is NumField.SourceHpPct or NumField.TargetHpPct) && v < 0f) return false;
+            if ((c.Field is NumField.SourceHpPct or NumField.TargetHpPct
+                    or NumField.DistSourceToTarget or NumField.DistMeToSource or NumField.DistMeToTarget) && v < 0f) return false;
             if (!Compare(v, c.Op, c.Value)) return false;
         }
         return true;
@@ -848,8 +1372,20 @@ public sealed class QuickDrawEngine
         NumField.Param4      => e.Param4,
         NumField.SourceHpPct => HpPct(e.SourceId),
         NumField.TargetHpPct => HpPct(e.TargetId),
+        NumField.DistSourceToTarget => ActorDist(e.SourceId, e.TargetId),
+        NumField.DistMeToSource     => ActorDist(Plugin.PlayerState.EntityId, e.SourceId),
+        NumField.DistMeToTarget     => ActorDist(Plugin.PlayerState.EntityId, e.TargetId),
         _                    => 0f,
     };
+
+    private static float ActorDist(uint a, uint b)
+    {
+        if (a == 0 || b == 0) return -1f;
+        var ao = Actor(a);
+        var bo = Actor(b);
+        if (ao == null || bo == null) return -1f;
+        return Vector3.Distance(ao.Position, bo.Position);
+    }
 
     private static float HpPct(uint actorId)
     {
@@ -857,6 +1393,145 @@ public sealed class QuickDrawEngine
         if (Plugin.ObjectTable.SearchById(actorId) is IBattleChara bc && bc.MaxHp > 0)
             return (float)bc.CurrentHp / bc.MaxHp * 100f;
         return -1f;
+    }
+
+    private bool StatusMatches(QuickDrawDef t, LogEvent e)
+    {
+        if (t.StatusGates.Count == 0) return true;
+        foreach (var g in t.StatusGates)
+        {
+            uint actorId = g.Who switch
+            {
+                StatusGateWho.Self   => Plugin.PlayerState.EntityId,
+                StatusGateWho.Source => e.SourceId,
+                StatusGateWho.Target => e.TargetId,
+                _                    => 0u,
+            };
+            if (!ActorStatusGate(actorId, g)) return false;
+        }
+        return true;
+    }
+
+    private static bool ActorStatusGate(uint actorId, StatusGate g)
+    {
+        bool has = ActorHasNamedStatus(actorId, g.StatusId, g.Name);
+        return g.Have ? has : !has;
+    }
+
+    private static bool ActorHasNamedStatus(uint actorId, uint statusId, string name)
+    {
+        if (actorId == 0) return false;
+        if (Plugin.ObjectTable.SearchById(actorId) is not IBattleChara bc) return false;
+        bool byId   = statusId != 0;
+        bool byName = !string.IsNullOrWhiteSpace(name);
+        if (!byId && !byName) return false;
+        foreach (var s in bc.StatusList)
+        {
+            if (s.StatusId == 0) continue;
+            if (byId && s.StatusId == statusId) return true;
+            if (byName)
+            {
+                var n = Plugin.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Status>()
+                    .GetRowOrDefault(s.StatusId)?.Name.ExtractText();
+                if (n != null && n.Contains(name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private static IEnumerable<DrawSpec> DependencyShapes(QuickDrawDef t, DrawSpec d)
+    {
+        var seen = new HashSet<string>();
+        if (d.Anchor == DrawAnchor.LinkedShape && !string.IsNullOrEmpty(d.AnchorShapeId))
+        {
+            var s = FindShape(t, d.AnchorShapeId);
+            if (s != null && seen.Add(s.Id)) yield return s;
+        }
+        bool usesLink = d.Shape is QuickShape.Line or QuickShape.Arrow or QuickShape.ChevronPath
+            || (d.Shape == QuickShape.Rectangle && d.SpanToTarget);
+        if (usesLink && d.Link == LinkTarget.LinkedShape && !string.IsNullOrEmpty(d.LinkShapeId))
+        {
+            var s = FindShape(t, d.LinkShapeId);
+            if (s != null && seen.Add(s.Id)) yield return s;
+        }
+    }
+
+    private static DrawSpec? FindShape(QuickDrawDef t, string id)
+    {
+        if (t.Draw.Id == id) return t.Draw;
+        foreach (var ex in t.ExtraShapes)
+            if (ex.Id == id) return ex;
+        foreach (var fu in t.FollowUps)
+        {
+            if (fu.Draw.Id == id) return fu.Draw;
+            foreach (var ex in fu.ExtraShapes)
+                if (ex.Id == id) return ex;
+        }
+        return null;
+    }
+
+    private Vector3? ResolveLinkedShapePos(string shapeId)
+    {
+        if (string.IsNullOrEmpty(shapeId)) return null;
+        if (!_shapeAnchors.TryGetValue(shapeId, out var a)) return null;
+        var p = a.Pos();
+        if (p != null)
+        {
+            a.Last = p.Value;
+            return p;
+        }
+        return a.Last != default ? a.Last : null;
+    }
+
+    private IGameObject? ResolveLinkedShapeOwner(string shapeId)
+    {
+        if (string.IsNullOrEmpty(shapeId)) return null;
+        return _shapeAnchors.TryGetValue(shapeId, out var a) ? a.Owner : null;
+    }
+
+    private void RegisterShapeAnchor(string id, StaticVfx vfx, float life)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        _shapeAnchors[id] = new ShapeAnchor
+        {
+            Expiry = DateTime.Now.AddSeconds(life),
+            Owner  = vfx.Owner,
+            Pos    = () =>
+            {
+                if (vfx.LastPosition != default)
+                    return vfx.LastPosition;
+                if (vfx.Position != default)
+                    return vfx.Position;
+                return null;
+            },
+        };
+    }
+
+    private void UnregisterShapeAnchor(string id)
+    {
+        if (!string.IsNullOrEmpty(id))
+            _shapeAnchors.Remove(id);
+    }
+
+    private static IGameObject? NearestByBaseId(uint baseId, LogEvent e)
+    {
+        if (baseId == 0) return null;
+        var origin = new Vector3(e.X, 0f, e.Y);
+        if (origin.X == 0f && origin.Z == 0f)
+        {
+            var src = Actor(e.SourceId);
+            origin = src?.Position ?? new Vector3(100f, 0f, 100f);
+        }
+        IGameObject? best = null;
+        float bestSq = float.MaxValue;
+        foreach (var o in Plugin.ObjectTable)
+        {
+            if (o.BaseId != baseId) continue;
+            float dSq = Vector3.DistanceSquared(o.Position, origin);
+            if (dSq < bestSq) { bestSq = dSq; best = o; }
+        }
+        return best;
     }
 
     private static bool Compare(float a, NumOp op, float b) => op switch

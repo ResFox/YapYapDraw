@@ -11,10 +11,12 @@ using YapYapDraw.Engine.Enum;
 using YapYapDraw.Engine.Helper;
 using YapYapDraw.Engine.Managers;
 using YapYapDraw.Engine.ModuleSetup;
+using YapYapDraw.QuickDraws;
 using YapYapDraw.Engine.Struct;
 using YapYapDraw.Engine.Util;
 using YapYapDraw.Engine.Vfx;
 using YapYapDraw.Windows;
+using YapYapDraw.Logging;
 
 namespace YapYapDraw.Modules.M12S.Body;
 
@@ -89,15 +91,19 @@ public class CloneHighlight : ISpecialAction
     private uint _phase;
     private Dir _north = Dir.None;
     private StaticVfx _bait;
-    private StaticVfx _tether;
     private Vector3? _baitAt;
+    private const string GuideOwner = "m12s_rep1_guide";
+    private bool _guideLive;
+    private bool? _lastGuideDark;
+    private Vector3? _lastGuideSpot;
+    private bool _lastTether;
 
     public override string Name => "Replication 1 (Clones + Bait)";
     public override string? ModuleEnableKey => "Lindblum/Replication 1 (Clones + Bait)";
 
     public override uint Phase => 2u;
 
-    public override HashSet<uint> ActionID => new HashSet<uint> { 46303u, 46301u, 46304u, 46368u };
+    public override HashSet<uint> ActionID => new HashSet<uint> { 46303u, 46301u, 46304u, 46368u, 46345u };
 
     public override bool HasConfig => true;
 
@@ -229,6 +235,7 @@ public class CloneHighlight : ISpecialAction
     {
         switch (info.ActionId)
         {
+            case 46345:
             case 46368:
                 ClearAll();
                 break;
@@ -243,6 +250,11 @@ public class CloneHighlight : ISpecialAction
 
     public override void OnAbilityCast(ActorAbilityInfo info)
     {
+        if (info.ActionId == 46345)
+        {
+            ClearAll();
+            return;
+        }
         if (info.ActionId == 46304 && _phase == 0 && _darkClones.Count == 2)
         {
             _phase = 1;
@@ -288,34 +300,28 @@ public class CloneHighlight : ISpecialAction
 
     private void UpdateBait()
     {
-        if (_north == Dir.None && _phase == 0 && _darkClones.Count == 2)
+        if (IdyllicDream.IsRunning)
+        {
+            RemoveBait();
+            ClearGuide();
+            return;
+        }
+
+        if (_north == Dir.None && _darkClones.Count == 2)
         {
             _north = FindNorth();
         }
 
-        Vector3? target = null;
-        if (C.Preview)
-        {
-            Vector2 pv = ComputeBait(C.PreviewDir, C.PreviewFire);
-            if (pv != Vector2.Zero)
-            {
-                target = new Vector3(pv.X, 0f, pv.Y);
-            }
-        }
-        else if (ModuleConfig.IsEnabled(ModuleEnableKey) && _phase == 0 && _north != Dir.None)
-        {
-            Vector2 p = ComputeBait(_north, HasDarkResDown());
-            if (p != Vector2.Zero)
-            {
-                target = new Vector3(p.X, 0f, p.Y);
-            }
-        }
-
+        Vector3? target = ResolveBaitSpot();
         if (target == null)
         {
             RemoveBait();
+            ClearGuide();
             return;
         }
+
+        bool darkDebuff = C.Preview ? C.PreviewFire : HasDarkResDown();
+        RefreshGuide(darkDebuff, target.Value);
 
         if (_bait == null || _baitAt == null || Vector3.Distance(_baitAt.Value, target.Value) > 0.05f)
         {
@@ -324,18 +330,20 @@ public class CloneHighlight : ISpecialAction
             _baitAt = target.Value;
             if (_bait != null) aoes.Add(_bait);
         }
+    }
 
-        if (C.ShowTether && _tether == null)
+    private Vector3? ResolveBaitSpot()
+    {
+        if (C.Preview)
         {
-            _tether = SpawnTether(target.Value);
-            if (_tether != null) aoes.Add(_tether);
+            Vector2 pv = ComputeBait(C.PreviewDir, C.PreviewFire);
+            return pv != Vector2.Zero ? new Vector3(pv.X, 0f, pv.Y) : null;
         }
-        else if (!C.ShowTether && _tether != null)
-        {
-            _tether.Remove();
-            aoes.Remove(_tether);
-            _tether = null;
-        }
+        if (!ModuleConfig.IsEnabled(ModuleEnableKey) || _north == Dir.None)
+            return null;
+        bool darkDebuff = HasDarkResDown();
+        Vector2 p = ComputeBait(_north, darkDebuff);
+        return p != Vector2.Zero ? new Vector3(p.X, 0f, p.Y) : null;
     }
 
     private Dir FindNorth()
@@ -377,6 +385,8 @@ public class CloneHighlight : ISpecialAction
     }
 
     private static float BaitRadius() => IsMelee(C.Role) ? 0.5f : 1.45f;
+    private static string BaitText(bool darkDebuff) => darkDebuff ? "BAIT FIRE" : "BAIT DARK";
+    private static Vector4 GuideColor(bool darkDebuff) => darkDebuff ? FireColor : DarkColor;
 
     private static bool IsMelee(Role r) => r is Role.MT or Role.OT or Role.M1 or Role.M2;
 
@@ -552,23 +562,53 @@ public class CloneHighlight : ISpecialAction
         });
     }
 
-    private static StaticVfx SpawnTether(Vector3 pos)
+    private void RefreshGuide(bool darkDebuff, Vector3 spot)
     {
-        var lp = (IGameObject?)Svc.Objects.LocalPlayer;
-        if (lp == null) return null;
-        return DrawManager.Draw(new DrawElement
+        if (Plugin.Instance == null) return;
+
+        bool spotSame = _lastGuideSpot.HasValue && Vector3.Distance(_lastGuideSpot.Value, spot) < 0.05f;
+        if (_guideLive && _lastGuideDark == darkDebuff && spotSame && _lastTether == C.ShowTether)
+            return;
+
+        _guideLive     = true;
+        _lastGuideDark = darkDebuff;
+        _lastGuideSpot = spot;
+        _lastTether    = C.ShowTether;
+
+        var color = GuideColor(darkDebuff);
+        var e = new LogEvent { Name = "rep1_guide" };
+
+        Plugin.Instance.Engine.ClearExternal(GuideOwner);
+
+        // Text rides on the player, not the spot.
+        Plugin.Instance.Engine.SpawnExternal(GuideOwner, new DrawSpec
         {
-            drawAvfx = "customRect",
-            radiusX = 0.35f,
-            radiusY = 1f,
-            radiusZ = 1f,
-            drawOnObject = true,
-            endToTarget = true,
-            targetPosition = pos,
-            refColor = BaitColor,
-            refTargetColor = BaitColor,
-            destroyTime = 600000f
-        }, lp);
+            Shape = QuickShape.Text,
+            Anchor = DrawAnchor.Self,
+            AttachToActor = true,
+            Color = color,
+            Duration = 600f,
+            Label = BaitText(darkDebuff),
+            LabelColor = color,
+            LabelSize = 1.2f,
+            LabelHeight = 2f,
+        }, e, previewSelf: true);
+
+        if (!C.ShowTether) return;
+
+        Plugin.Instance.Engine.SpawnExternal(GuideOwner, new DrawSpec
+        {
+            Shape = QuickShape.ChevronPath,
+            Anchor = DrawAnchor.Self,
+            AttachToActor = true,
+            Link = LinkTarget.FixedSpot,
+            LinkPosition = spot,
+            Color = color,
+            ChevronSpacing = 2f,
+            LineThickness = 4f,
+            Length = 30f,
+            Duration = 600f,
+        }, e, previewSelf: true);
     }
 
     private void RemoveBait()
@@ -579,13 +619,16 @@ public class CloneHighlight : ISpecialAction
             aoes.Remove(_bait);
             _bait = null;
         }
-        if (_tether != null)
-        {
-            _tether.Remove();
-            aoes.Remove(_tether);
-            _tether = null;
-        }
         _baitAt = null;
+    }
+
+    private void ClearGuide()
+    {
+        if (!_guideLive && _lastGuideSpot == null) return;
+        _guideLive = false;
+        _lastGuideDark = null;
+        _lastGuideSpot = null;
+        Plugin.Instance?.Engine.ClearExternal(GuideOwner);
     }
 
     private void ClearAll()
@@ -596,6 +639,7 @@ public class CloneHighlight : ISpecialAction
         }
         _rings.Clear();
         RemoveBait();
+        ClearGuide();
         aoes.Clear();
         _darkMaster = 0;
         _fireMaster = 0;

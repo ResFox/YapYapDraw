@@ -278,4 +278,29 @@ internal static class ArenaPad
         => new(
             origin.X + (wx - (CenterX - HalfExtent)) / (HalfExtent * 2f) * size,
             origin.Y + (wz - (CenterZ - HalfExtent)) / (HalfExtent * 2f) * size);
+
+    public static Func<float, float, Vector2> DrawBackdrop(Vector2 origin, float size, uint territory, Plugin plugin)
+    {
+        var dl = ImGui.GetWindowDrawList();
+        var a = origin;
+        var b = new Vector2(origin.X + size, origin.Y + size);
+        var mid = new Vector2(origin.X + size * 0.5f, origin.Y + size * 0.5f);
+
+        dl.AddRectFilled(a, b, ImGui.ColorConvertFloat4ToU32(new Vector4(0.10f, 0.10f, 0.11f, 1f)), 4f);
+        DrawGrid(dl, a, b, size);
+        DrawArenaOutline(dl, a, b, mid, size, DetectShape(territory));
+
+        Vector2 ToScreen(float wx, float wz) => WorldToScreen(wx, wz, origin, size);
+        DrawOverlays(ToScreen, plugin);
+        return ToScreen;
+    }
+
+    public static Vector3 ScreenToWorld(Vector2 mouse, Vector2 origin, float size, bool snapGrid)
+    {
+        float wx = (CenterX - HalfExtent) + (mouse.X - origin.X) / size * (HalfExtent * 2f);
+        float wz = (CenterZ - HalfExtent) + (mouse.Y - origin.Y) / size * (HalfExtent * 2f);
+        if (snapGrid) { wx = MathF.Round(wx); wz = MathF.Round(wz); }
+        else { wx = MathF.Round(wx, 1); wz = MathF.Round(wz, 1); }
+        return new Vector3(wx, 0f, wz);
+    }
 }

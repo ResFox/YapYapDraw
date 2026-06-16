@@ -19,6 +19,9 @@ public abstract class ISpecialAction
 
     public virtual bool HasConfig => false;
 
+    /// Set false to exclude a mechanic from discovery (kept in source, not loaded).
+    public virtual bool Registered => true;
+
     /// fightKey/mechanicName — used for persisted on/off state in plugin config.
     public virtual string? ModuleEnableKey => null;
 

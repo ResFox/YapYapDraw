@@ -10,9 +10,11 @@ using YapYapDraw.Engine.Element;
 using YapYapDraw.Engine.Enum;
 using YapYapDraw.Engine.Managers;
 using YapYapDraw.Engine.ModuleSetup;
+using YapYapDraw.QuickDraws;
 using YapYapDraw.Engine.Struct;
 using YapYapDraw.Engine.Vfx;
 using YapYapDraw.Windows;
+using YapYapDraw.Logging;
 
 namespace YapYapDraw.Modules.M12S.Body;
 
@@ -36,6 +38,7 @@ public class CloneBait2 : ISpecialAction
         public RoleMode Role = RoleMode.Auto;
         public int ColorIndex = 4;
         public bool ShowTether = true;
+        public bool ShowText = true;
         public bool ShowGrab = true;
         public bool ShowNorth = true;
         public bool ShowNothingGuide = true;
@@ -93,6 +96,15 @@ public class CloneBait2 : ISpecialAction
     private static Vector4 GrabColor => new Vector4(0.20f, 0.95f, 0.35f, Alpha);
     private static Vector4 NorthColor => new Vector4(1.00f, 0.82f, 0.10f, Alpha);
     private static Vector4 NothingColor => new Vector4(0.96f, 0.20f, 0.20f, Alpha);
+    private static string SpotText(Tether tether) => tether switch
+    {
+        Tether.Defamation => "BAIT DEFAMATION",
+        Tether.Stack => "STACK",
+        Tether.Fan => "FAN",
+        Tether.Boss => "BAIT BOSS",
+        Tether.Nothing => "FREE",
+        _ => "GO HERE",
+    };
 
     private uint _phase;
     private bool _netherFar;
@@ -101,7 +113,6 @@ public class CloneBait2 : ISpecialAction
     private readonly Dictionary<uint, uint> _cloneTethers = new();
 
     private StaticVfx _spot;
-    private StaticVfx _tether;
     private StaticVfx _grab;
     private uint _grabId;
     private StaticVfx _north;
@@ -109,6 +120,13 @@ public class CloneBait2 : ISpecialAction
     private StaticVfx _nothing;
     private Vector3? _spotAt;
     private SpotStyle _spotStyle;
+    private const string GuideOwner = "m12s_rep2_guide";
+
+    private bool _guideLive;
+    private Vector3? _lastGuideSpot;
+    private Tether _lastGuideTether;
+    private bool _lastShowText;
+    private bool _lastShowPath;
 
     public override string Name => "Replication 2 (Clones + Bait)";
     public override string? ModuleEnableKey => "Lindblum/Replication 2 (Clones + Bait)";
@@ -209,6 +227,7 @@ public class CloneBait2 : ISpecialAction
         if (!C.Preview && _phase == 0)
         {
             RemoveSpot();
+            ClearGuide();
             UpdateNorth(Presets[C.Strat].North);
             UpdateGrab(dir.Value);
             return;
@@ -232,6 +251,7 @@ public class CloneBait2 : ISpecialAction
         if (r == null)
         {
             RemoveSpot();
+            ClearGuide();
             return;
         }
 
@@ -245,11 +265,21 @@ public class CloneBait2 : ISpecialAction
             if (snake != null) target = snake;
         }
 
+        // Final step: melees stack on B, ranged on D.
+        if (phase == 5)
+        {
+            Vector3? wm = Waymark(ranged ? 3 : 1);
+            if (wm != null) target = wm;
+        }
+
         if (target == null)
         {
             RemoveSpot();
+            ClearGuide();
             return;
         }
+
+        RefreshGuide(target.Value, r.Value.tether);
 
         if (_spot == null || _spotAt == null || _spotStyle != C.SpotStyle || Vector3.Distance(_spotAt.Value, target.Value) > 0.05f)
         {
@@ -258,18 +288,6 @@ public class CloneBait2 : ISpecialAction
             _spotAt = target.Value;
             _spotStyle = C.SpotStyle;
             if (_spot != null) aoes.Add(_spot);
-        }
-
-        if (C.ShowTether && _tether == null)
-        {
-            _tether = SpawnTether(target.Value);
-            if (_tether != null) aoes.Add(_tether);
-        }
-        else if (!C.ShowTether && _tether != null)
-        {
-            _tether.Remove();
-            aoes.Remove(_tether);
-            _tether = null;
         }
     }
 
@@ -487,23 +505,78 @@ public class CloneBait2 : ISpecialAction
         });
     }
 
-    private static StaticVfx SpawnTether(Vector3 pos)
+    private void RefreshGuide(Vector3 spot, Tether tether)
     {
-        IGameObject me = Svc.Objects.LocalPlayer;
-        if (me == null) return null;
-        return DrawManager.Draw(new DrawElement
+        if (Plugin.Instance == null) return;
+
+        bool spotSame = _lastGuideSpot.HasValue && Vector3.Distance(_lastGuideSpot.Value, spot) < 0.05f;
+        if (_guideLive && spotSame && _lastGuideTether == tether
+            && _lastShowText == C.ShowText && _lastShowPath == C.ShowTether)
+            return;
+
+        _guideLive       = true;
+        _lastGuideSpot   = spot;
+        _lastGuideTether = tether;
+        _lastShowText    = C.ShowText;
+        _lastShowPath    = C.ShowTether;
+
+        var e = new LogEvent { Name = "rep2_guide" };
+        Plugin.Instance.Engine.ClearExternal(GuideOwner);
+
+        if (C.ShowText)
         {
-            drawAvfx = "customRect",
-            radiusX = 0.35f,
-            radiusY = 1f,
-            radiusZ = 1f,
-            drawOnObject = true,
-            endToTarget = true,
-            targetPosition = pos,
-            refColor = SpotColor,
-            refTargetColor = SpotColor,
-            destroyTime = 600000f,
-        }, me);
+            Plugin.Instance.Engine.SpawnExternal(GuideOwner, new DrawSpec
+            {
+                Shape = QuickShape.Text,
+                Anchor = DrawAnchor.Self,
+                AttachToActor = true,
+                Color = SpotColor,
+                Duration = 600f,
+                Label = SpotText(tether),
+                LabelColor = SpotColor,
+                LabelSize = 1.2f,
+                LabelHeight = 2f,
+            }, e, previewSelf: true);
+        }
+
+        if (C.ShowTether)
+        {
+            Plugin.Instance.Engine.SpawnExternal(GuideOwner, new DrawSpec
+            {
+                Shape = QuickShape.ChevronPath,
+                Anchor = DrawAnchor.Self,
+                AttachToActor = true,
+                Link = LinkTarget.FixedSpot,
+                LinkPosition = spot,
+                Color = SpotColor,
+                ChevronSpacing = 2f,
+                LineThickness = 4f,
+                Length = 30f,
+                Duration = 600f,
+            }, e, previewSelf: true);
+        }
+    }
+
+    private void ClearGuide()
+    {
+        if (!_guideLive) return;
+        _guideLive = false;
+        _lastGuideSpot = null;
+        Plugin.Instance?.Engine.ClearExternal(GuideOwner);
+    }
+
+    private static unsafe Vector3? Waymark(int index)
+    {
+        var mc = FFXIVClientStructs.FFXIV.Client.Game.UI.MarkingController.Instance();
+        if (mc == null) return null;
+        int i = 0;
+        foreach (ref var m in mc->FieldMarkers)
+        {
+            if (i == index)
+                return m.Active ? new Vector3(m.X / 1000f, m.Y / 1000f, m.Z / 1000f) : null;
+            i++;
+        }
+        return null;
     }
 
     private void RemoveSpot()
@@ -513,12 +586,6 @@ public class CloneBait2 : ISpecialAction
             _spot.Remove();
             aoes.Remove(_spot);
             _spot = null;
-        }
-        if (_tether != null)
-        {
-            _tether.Remove();
-            aoes.Remove(_tether);
-            _tether = null;
         }
         _spotAt = null;
     }
@@ -563,6 +630,7 @@ public class CloneBait2 : ISpecialAction
     private void Clear()
     {
         RemoveSpot();
+        ClearGuide();
         RemoveGrab();
         RemoveNorth();
         RemoveNothing();
@@ -636,7 +704,9 @@ public class CloneBait2 : ISpecialAction
         bool north = C.ShowNorth;
         if (ImGui.Checkbox("Strat north line (yellow)", ref north)) { C.ShowNorth = north; ModuleConfig.Save<Config>(); }
         bool tether = C.ShowTether;
-        if (ImGui.Checkbox("Guide line to my spot", ref tether)) { C.ShowTether = tether; ModuleConfig.Save<Config>(); }
+        if (ImGui.Checkbox("Path to my spot", ref tether)) { C.ShowTether = tether; ModuleConfig.Save<Config>(); }
+        bool text = C.ShowText;
+        if (ImGui.Checkbox("Callout text over me (STACK / BAIT \u2026)", ref text)) { C.ShowText = text; ModuleConfig.Save<Config>(); }
         bool nothing = C.ShowNothingGuide;
         if (ImGui.Checkbox("Mark my clone when I take no tether", ref nothing)) { C.ShowNothingGuide = nothing; ModuleConfig.Save<Config>(); }
 
