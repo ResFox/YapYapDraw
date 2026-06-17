@@ -5,7 +5,7 @@
     <InternalName>YapYapDraw</InternalName>
     <Description>Draws boss mechanics on the arena floor.</Description>
     <Punchline>Draw your mechanics on the floor.</Punchline>
-    <AssemblyVersion>1.0.6.9</AssemblyVersion>
+    <AssemblyVersion>1.0.6.10</AssemblyVersion>
     <IconPath>images/icon.png</IconPath>
     <IconUrl>https://raw.githubusercontent.com/ResFox/YapYapDraw/main/images/icon.png</IconUrl>
     <Tags>triggers;vfx;draw;raid;savage;ultimate</Tags>

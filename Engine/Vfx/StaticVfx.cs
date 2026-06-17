@@ -57,7 +57,17 @@ public class StaticVfx : BaseVfx
 
     public float Radian { get; set; } = 1f;
 
-    public IGameObject? Owner { get; set; }
+    private IGameObject? _owner;
+
+    public IGameObject? Owner
+    {
+        get => _owner;
+        set
+        {
+            _owner = value;
+            _ownerAddress = value?.Address ?? IntPtr.Zero;
+        }
+    }
 
     public IGameObject? Target { get; set; }
 

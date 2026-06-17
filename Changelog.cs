@@ -11,7 +11,6 @@ public static class Changelog
 
     public static readonly string[] Notes =
     {
-        "Added TEXT and PATH elements.",
-        "Polished uwu, ucob and umad modules.",
+        "Fixed UMAD tankbuster drawing target.",
     };
 }
