@@ -205,6 +205,7 @@ public sealed class CombatLogCapture : IDisposable
     // Same function the draw engine itself calls, so a pass-through is required.
     private delegate nint ActorVfxCreateDelegate(nint path, nint caster, nint target, float a4, char a5, ushort a6, char a7);
     private Hook<ActorVfxCreateDelegate>? _actorVfxHook;
+    private static readonly bool InstallActorVfxHook = false;
     private const string ActorVfxSig =
         "40 53 55 56 57 48 81 EC ?? ?? ?? ?? 0F 29 B4 24 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 84 24 ?? ?? ?? ?? 0F B6 AC 24 ?? ?? ?? ?? 0F 28 F3 49 8B F8";
     public bool   ActorVfxInstalled { get; private set; }
@@ -305,17 +306,20 @@ public sealed class CombatLogCapture : IDisposable
 
         VfxContainerHooks.Init(this, interop, Plugin.SigScanner, _log);
 
-        try
+        if (InstallActorVfxHook)
         {
-            nint addr = Plugin.SigScanner.ScanText(ActorVfxSig);
-            _actorVfxHook = interop.HookFromAddress<ActorVfxCreateDelegate>(addr, ActorVfxDetour);
-            _actorVfxHook.Enable();
-            ActorVfxInstalled = true;
-        }
-        catch (Exception ex)
-        {
-            ActorVfxError = ex.Message;
-            _log.Information($"[YapYapDraw] VFX feed unavailable on this game build: {ex.Message}");
+            try
+            {
+                nint addr = Plugin.SigScanner.ScanText(ActorVfxSig);
+                _actorVfxHook = interop.HookFromAddress<ActorVfxCreateDelegate>(addr, ActorVfxDetour);
+                _actorVfxHook.Enable();
+                ActorVfxInstalled = true;
+            }
+            catch (Exception ex)
+            {
+                ActorVfxError = ex.Message;
+                _log.Information($"[YapYapDraw] VFX feed unavailable on this game build: {ex.Message}");
+            }
         }
 
         LoadFromDisk();
