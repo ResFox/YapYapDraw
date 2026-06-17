@@ -11,6 +11,6 @@ public static class Changelog
 
     public static readonly string[] Notes =
     {
-        "Fixed UMAD tankbuster drawing target.",
+        "Fixed a VFX hook issue.",
     };
 }
