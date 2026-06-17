@@ -59,6 +59,7 @@ public sealed class ResourceService : IDisposable
         public void Update(byte b) => _crc = _table[(_crc ^ b) & 0xFF] ^ (_crc >> 8);
     }
 
+    private Crc32? _crc32;
     private Hook<GetResourceSyncDelegate>? _syncHook;
     private Hook<GetResourceAsyncDelegate>? _asyncHook;
 
@@ -73,6 +74,8 @@ public sealed class ResourceService : IDisposable
             Svc.SigScanner.ScanText(SigGetResourceAsync),
             AsyncDetour);
         _asyncHook.Enable();
+
+        _crc32 = new Crc32();
     }
 
     public void Dispose()
@@ -97,45 +100,32 @@ public sealed class ResourceService : IDisposable
         bool isSync, ResourceManager* resourceManager, ResourceCategory* category, uint* type, uint* hash,
         byte* path, void* unknown, bool isUnknown, void* unkDebugPtr, uint unkDebugInt)
     {
-        // This sits on EVERY resource load in the game, so anything we don't block
-        // must pass straight through untouched — otherwise unrelated loads (pets,
-        // glamour, mounts) get parsed/scanned on the loader thread and a parse
-        // failure here would surface as a half-loaded actor. Every blocked path is
-        // a "vfx/..." omen, so non-vfx loads never need inspecting.
-        if (VfxBlocker.BlockedPaths.Count != 0 && IsVfxPath(path))
+        if (!Utf8GamePath.FromPointer(path, MetaDataComputation.CiCrc32, out var gamePath))
         {
-            try
-            {
-                if (Utf8GamePath.FromPointer(path, MetaDataComputation.CiCrc32, out var gamePath)
-                    && VfxBlocker.BlockedPaths.Contains(gamePath.ToString()))
-                {
-                    var bytes  = Encoding.ASCII.GetBytes("vfx/path/nothing.avfx");
-                    var buffer = stackalloc byte[bytes.Length + 1];
-                    Marshal.Copy(bytes, 0, (IntPtr)buffer, bytes.Length);
-                    path = buffer;
-
-                    var crc = new Crc32();
-                    crc.Init();
-                    foreach (var b in bytes)
-                        crc.Update(b);
-                    *hash = crc.Checksum;
-                }
-            }
-            catch
-            {
-                // never let a parse/marshal failure cross back into native loading
-            }
+            if (!isSync)
+                return _asyncHook!.Original(resourceManager, category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
+            return _syncHook!.Original(resourceManager, category, type, hash, path, unknown, unkDebugPtr, unkDebugInt);
         }
 
-        return isSync
-            ? _syncHook!.OriginalDisposeSafe(resourceManager, category, type, hash, path, unknown, unkDebugPtr, unkDebugInt)
-            : _asyncHook!.OriginalDisposeSafe(resourceManager, category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
-    }
+        var text = gamePath.ToString();
+        if (!VfxBlocker.BlockedPaths.Contains(text))
+        {
+            if (!isSync)
+                return _asyncHook!.OriginalDisposeSafe(ResourceManager.Instance(), category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
+            return _syncHook!.OriginalDisposeSafe(ResourceManager.Instance(), category, type, hash, path, unknown, unkDebugPtr, unkDebugInt);
+        }
 
-    private static unsafe bool IsVfxPath(byte* p)
-        => p != null
-        && p[0] == (byte)'v'
-        && p[1] == (byte)'f'
-        && p[2] == (byte)'x'
-        && p[3] == (byte)'/';
+        var bytes = Encoding.ASCII.GetBytes("vfx/path/nothing.avfx");
+        var buffer = stackalloc byte[bytes.Length + 1];
+        Marshal.Copy(bytes, 0, (IntPtr)buffer, bytes.Length);
+        path = buffer;
+        _crc32!.Init();
+        foreach (var b in bytes)
+            _crc32.Update(b);
+        *hash = _crc32.Checksum;
+
+        if (!isSync)
+            return _asyncHook!.OriginalDisposeSafe(ResourceManager.Instance(), category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
+        return _syncHook!.OriginalDisposeSafe(ResourceManager.Instance(), category, type, hash, path, unknown, unkDebugPtr, unkDebugInt);
+    }
 }
