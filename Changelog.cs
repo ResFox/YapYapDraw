@@ -11,6 +11,6 @@ public static class Changelog
 
     public static readonly string[] Notes =
     {
-        "Removed VFX entries from the log.",
+        "Tentative fix for a rare issue where some actions could get stuck greyed out.",
     };
 }

@@ -100,32 +100,36 @@ public sealed class ResourceService : IDisposable
         bool isSync, ResourceManager* resourceManager, ResourceCategory* category, uint* type, uint* hash,
         byte* path, void* unknown, bool isUnknown, void* unkDebugPtr, uint unkDebugInt)
     {
-        if (!Utf8GamePath.FromPointer(path, MetaDataComputation.CiCrc32, out var gamePath))
+        if (ShouldRedirect(path))
         {
-            if (!isSync)
-                return _asyncHook!.Original(resourceManager, category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
-            return _syncHook!.Original(resourceManager, category, type, hash, path, unknown, unkDebugPtr, unkDebugInt);
+            var bytes = Encoding.ASCII.GetBytes("vfx/path/nothing.avfx");
+            var buffer = stackalloc byte[bytes.Length + 1];
+            Marshal.Copy(bytes, 0, (IntPtr)buffer, bytes.Length);
+            buffer[bytes.Length] = 0;
+            path = buffer;
+            _crc32!.Init();
+            foreach (var b in bytes)
+                _crc32.Update(b);
+            *hash = _crc32.Checksum;
         }
 
-        var text = gamePath.ToString();
-        if (!VfxBlocker.BlockedPaths.Contains(text))
+        return isSync
+            ? _syncHook!.Original(resourceManager, category, type, hash, path, unknown, unkDebugPtr, unkDebugInt)
+            : _asyncHook!.Original(resourceManager, category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
+    }
+
+    private static unsafe bool ShouldRedirect(byte* path)
+    {
+        if (VfxBlocker.BlockedPaths.Count == 0)
+            return false;
+        try
         {
-            if (!isSync)
-                return _asyncHook!.OriginalDisposeSafe(ResourceManager.Instance(), category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
-            return _syncHook!.OriginalDisposeSafe(ResourceManager.Instance(), category, type, hash, path, unknown, unkDebugPtr, unkDebugInt);
+            return Utf8GamePath.FromPointer(path, MetaDataComputation.CiCrc32, out var gamePath)
+                && VfxBlocker.BlockedPaths.Contains(gamePath.ToString());
         }
-
-        var bytes = Encoding.ASCII.GetBytes("vfx/path/nothing.avfx");
-        var buffer = stackalloc byte[bytes.Length + 1];
-        Marshal.Copy(bytes, 0, (IntPtr)buffer, bytes.Length);
-        path = buffer;
-        _crc32!.Init();
-        foreach (var b in bytes)
-            _crc32.Update(b);
-        *hash = _crc32.Checksum;
-
-        if (!isSync)
-            return _asyncHook!.OriginalDisposeSafe(ResourceManager.Instance(), category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
-        return _syncHook!.OriginalDisposeSafe(ResourceManager.Instance(), category, type, hash, path, unknown, unkDebugPtr, unkDebugInt);
+        catch
+        {
+            return false;
+        }
     }
 }

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
@@ -103,6 +104,7 @@ public sealed class CombatLogCapture : IDisposable
     private const int    MaxPersistFrames = 24000;
     private readonly List<MapFrame>          _frames     = new();
     private readonly Dictionary<uint, string> _frameNames = new();
+    private readonly Dictionary<uint, string> _jobNameCache = new();
     private readonly List<ActorSample>        _frameScratch = new();
     private DateTime _lastSnapshot = DateTime.MinValue;
 
@@ -461,6 +463,7 @@ public sealed class CombatLogCapture : IDisposable
         _pulls.Clear();
         _frames.Clear();
         _frameNames.Clear();
+        _jobNameCache.Clear();
         _currentPull = 0;
         ResetLiveState();
         try { if (File.Exists(LogFilePath)) File.Delete(LogFilePath); }
@@ -834,7 +837,7 @@ public sealed class CombatLogCapture : IDisposable
 
             if (!_frameNames.ContainsKey(bc.EntityId))
             {
-                var nm = bc.Name.TextValue;
+                var nm = bc is IPlayerCharacter pc ? JobAbbr(pc) : bc.Name.TextValue;
                 if (!string.IsNullOrEmpty(nm)) _frameNames[bc.EntityId] = nm;
             }
         }
@@ -1177,9 +1180,32 @@ public sealed class CombatLogCapture : IDisposable
         if (p != null) p.Events++;
     }
 
+    private static string JobAbbr(IPlayerCharacter pc)
+    {
+        try
+        {
+            var abbr = Plugin.DataManager.GetExcelSheet<Lumina.Excel.Sheets.ClassJob>()
+                .GetRowOrDefault(pc.ClassJob.RowId)?.Abbreviation.ExtractText();
+            return string.IsNullOrEmpty(abbr) ? "Player" : abbr!;
+        }
+        catch { return "Player"; }
+    }
+
+    private string AnonName(uint id, ActorKind kind, string fallback)
+    {
+        if (id == 0 || kind is not (ActorKind.You or ActorKind.Party)) return fallback;
+        if (_jobNameCache.TryGetValue(id, out var cached)) return cached;
+        if (Plugin.ObjectTable.SearchById(id) is not IPlayerCharacter pc) return fallback;
+        var job = JobAbbr(pc);
+        _jobNameCache[id] = job;
+        return job;
+    }
+
     private void Emit(LogEvent e, bool addToLog = true)
     {
-        e = e with { Seq = ++_seq, Time = DateTime.Now, Pull = _currentPull };
+        var sName = AnonName(e.SourceId, e.SourceKind, e.SourceName);
+        var tName = AnonName(e.TargetId, e.TargetKind, e.TargetName);
+        e = e with { Seq = ++_seq, Time = DateTime.Now, Pull = _currentPull, SourceName = sName, TargetName = tName };
         TotalEmitted++;
         LastEventAt = e.Time;
         if ((int)e.Kind < _kindCounts.Length) _kindCounts[(int)e.Kind]++;
