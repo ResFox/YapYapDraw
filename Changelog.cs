@@ -11,6 +11,6 @@ public static class Changelog
 
     public static readonly string[] Notes =
     {
-        "Tentative fix for a rare issue where some actions could get stuck greyed out.",
+        "Fixed a crash that could happen while drawing mechanics.",
     };
 }
