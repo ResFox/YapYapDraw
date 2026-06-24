@@ -413,6 +413,40 @@ public sealed class CombatLogCapture : IDisposable
 
     public bool ActorControlInstalled { get; private set; }
 
+    private static void Toggle<T>(Hook<T>? h, bool enabled) where T : Delegate
+    {
+        if (h == null) return;
+        try { if (enabled) h.Enable(); else h.Disable(); } catch { }
+    }
+
+    public void SetAllGameHooks(bool enabled)
+    {
+        Toggle(_actionEffectHook, enabled);
+        Toggle(_castHook, enabled);
+        Toggle(_actorControlHook, enabled);
+        Toggle(_mapEffectHook, enabled);
+        Toggle(_timelineSyncHook, enabled);
+        Toggle(_npcYellHook, enabled);
+        Toggle(_actorVfxHook, enabled);
+        VfxContainerHooks.SetEnabled(enabled);
+    }
+
+    public bool SetGameHook(string name, bool enabled)
+    {
+        switch (name)
+        {
+            case "actioneffect": Toggle(_actionEffectHook, enabled); return true;
+            case "cast":         Toggle(_castHook, enabled);         return true;
+            case "actorcontrol": Toggle(_actorControlHook, enabled); return true;
+            case "mapeffect":    Toggle(_mapEffectHook, enabled);    return true;
+            case "timelinesync": Toggle(_timelineSyncHook, enabled); return true;
+            case "npcyell":      Toggle(_npcYellHook, enabled);      return true;
+            case "vfx":          Toggle(_actorVfxHook, enabled);     return true;
+            case "tether":       VfxContainerHooks.SetEnabled(enabled); return true;
+            default: return false;
+        }
+    }
+
     public void Dispose()
     {
         SaveToDisk();

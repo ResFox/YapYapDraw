@@ -121,6 +121,8 @@ public sealed class FightModuleHost : IDisposable
         }
     }
 
+    public void SetResourceHook(bool enabled) => _resourceService?.SetEnabled(enabled);
+
     private void RegisterFight(BaseModule meta, IEnumerable<ISpecialAction> actions)
     {
         var list = actions.ToList();

@@ -242,7 +242,14 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnCommand(string command, string args)
     {
-        switch (args.Trim().ToLowerInvariant())
+        var lower = args.Trim().ToLowerInvariant();
+        if (lower.StartsWith("diag"))
+        {
+            HandleDiag(lower);
+            return;
+        }
+
+        switch (lower)
         {
             case "config":
             case "c":
@@ -269,6 +276,39 @@ public sealed class Plugin : IDalamudPlugin
                 ToggleMain();
                 break;
         }
+    }
+
+    private void HandleDiag(string lower)
+    {
+        var parts = lower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3)
+        {
+            ChatGui.Print("[YapYapDraw] /yd diag <all|resource|actioneffect|cast|actorcontrol|mapeffect|timelinesync|npcyell|vfx|tether> <on|off>");
+            return;
+        }
+
+        var target = parts[1];
+        var on     = parts[2] == "on";
+
+        if (target == "all")
+        {
+            Capture.SetAllGameHooks(on);
+            Host.SetResourceHook(on);
+            ChatGui.Print($"[YapYapDraw] all game hooks {(on ? "ENABLED" : "DISABLED")}");
+            return;
+        }
+
+        if (target == "resource")
+        {
+            Host.SetResourceHook(on);
+            ChatGui.Print($"[YapYapDraw] resource hook {(on ? "ENABLED" : "DISABLED")}");
+            return;
+        }
+
+        if (Capture.SetGameHook(target, on))
+            ChatGui.Print($"[YapYapDraw] {target} hook {(on ? "ENABLED" : "DISABLED")}");
+        else
+            ChatGui.Print($"[YapYapDraw] unknown hook '{target}'");
     }
 
     public void ShowTab(string tab) => _mainWindow.Show(tab);

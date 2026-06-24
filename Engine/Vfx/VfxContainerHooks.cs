@@ -48,6 +48,12 @@ internal static class VfxContainerHooks
         }
     }
 
+    public static void SetEnabled(bool enabled)
+    {
+        try { if (enabled) _createHook?.Enable(); else _createHook?.Disable(); } catch { }
+        try { if (enabled) _cancelHook?.Enable(); else _cancelHook?.Disable(); } catch { }
+    }
+
     public static void Dispose()
     {
         try { _createHook?.Dispose(); } catch { }

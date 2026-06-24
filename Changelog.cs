@@ -11,6 +11,6 @@ public static class Changelog
 
     public static readonly string[] Notes =
     {
-        "Fixed a crash that could happen while drawing mechanics.",
+        "Attempt to fix a rare bug where some skills could get stuck unusable until you changed zones.",
     };
 }
