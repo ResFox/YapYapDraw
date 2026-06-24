@@ -2,7 +2,7 @@
   "Author": "Res",
   "Name": "YapYap Draw",
   "InternalName": "YapYapDraw",
-  "AssemblyVersion": "1.0.6.16",
+  "AssemblyVersion": "1.0.6.17",
   "Description": "Draws boss mechanics on the arena floor.",
   "ApplicableVersion": "any",
   "Tags": [

@@ -106,13 +106,6 @@ public sealed class ResourceService : IDisposable
         bool isSync, ResourceManager* resourceManager, ResourceCategory* category, uint* type, uint* hash,
         byte* path, void* unknown, bool isUnknown, void* unkDebugPtr, uint unkDebugInt)
     {
-        if (VfxBlocker.BlockedPaths.Count == 0)
-        {
-            if (!isSync)
-                return _asyncHook!.Original(resourceManager, category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
-            return _syncHook!.Original(resourceManager, category, type, hash, path, unknown, unkDebugPtr, unkDebugInt);
-        }
-
         if (!Utf8GamePath.FromPointer(path, MetaDataComputation.CiCrc32, out var gamePath))
         {
             if (!isSync)
@@ -124,8 +117,8 @@ public sealed class ResourceService : IDisposable
         if (!VfxBlocker.BlockedPaths.Contains(text))
         {
             if (!isSync)
-                return _asyncHook!.Original(resourceManager, category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
-            return _syncHook!.Original(resourceManager, category, type, hash, path, unknown, unkDebugPtr, unkDebugInt);
+                return _asyncHook!.OriginalDisposeSafe(ResourceManager.Instance(), category, type, hash, path, unknown, isUnknown, unkDebugPtr, unkDebugInt);
+            return _syncHook!.OriginalDisposeSafe(ResourceManager.Instance(), category, type, hash, path, unknown, unkDebugPtr, unkDebugInt);
         }
 
         var bytes = Encoding.ASCII.GetBytes("vfx/path/nothing.avfx");
